@@ -511,7 +511,7 @@ export function Evaluation({ mode, center }: CenterProps) {
       <div className="row" style={{ marginBottom: 14 }}>
         <Segmented value={gen} onChange={setGen} options={[{ key: "ml", label: "Hybrid (traditional ML)" }, { key: "dl", label: "Deep learning" }]} />
         <span className="badge good">Primary: {ev.decision.primary === "ml" ? "hybrid (traditional ML)" : "deep learning"}</span>
-        <span className="badge">Development: {ev.split.development_stays} real stays · holdout: {ev.split.holdout_stays} real stays from {ev.split.holdout_first_date}</span>
+        <span className="badge">Development: {ev.split.development_stays} real stays · holdout: {ev.split.holdout_stays} real stays on the unit from {ev.split.holdout_first_date}</span>
       </div>
       <div className="grid">
         <Card wide n={`${ev.seeds} seeds; real intervals from 300 stay-level resamples`} title="Key statistics with uncertainty" sub="Real development value with its 95% bootstrap interval (stays resampled with all their boards); synthetic mean, spread and range across seeds">

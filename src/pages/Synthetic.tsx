@@ -31,7 +31,7 @@ export function Synthetic({ data, mode }: Props) {
         <Kpi label="Window" value={`${st.window[0].slice(5)} → ${st.window[1].slice(5)}`} sub={`${st.burn_in_days}-day warm-up first, ${st.beds} beds`} />
       </div>
       <div className="grid three">
-        <Card n={`fitted on ${cnt(data.counts?.train?.stays, "training stays")} (${cnt(data.counts?.train?.baby_shifts, "baby-shifts")})`} title="Traditional machine learning" sub={`${g.ml?.label} · fitted in ${g.ml?.fit_seconds}s`} right={<span className="badge" style={{ background: p.series[1] + "22" }}>ML</span>}>
+        <Card n={`fitted on ${cnt(data.counts?.train?.fit_baby_shifts ?? data.counts?.train?.baby_shifts, "baby-shifts")} before the holdout (${cnt(data.counts?.train?.fit_stays ?? data.counts?.train?.stays, "stays")})`} title="Traditional machine learning" sub={`${g.ml?.label} · fitted in ${g.ml?.fit_seconds}s`} right={<span className="badge" style={{ background: p.series[1] + "22" }}>ML</span>}>
           <div className="steps" style={{ ["--step" as any]: p.series[1] }}>
             <div className="step"><div><b>Birth facts: Gaussian copula</b><span>Gestational age, birth weight and day of admission each keep their real distribution; their dependence is the correlation of their normal scores.</span></div></div>
             <div className="step"><div><b>Each board: gradient-boosted transitions</b><span>For every field in turn (ratio, breathing, feeds, care area, spells, procedure, NAS), a boosted classifier gives the chance of each label given the board before and what is already written.</span></div></div>
@@ -39,7 +39,7 @@ export function Synthetic({ data, mode }: Props) {
             <div className="step"><div><b>Growth and going home</b><span>A boosted regression moves the weight (plus a real residual drawn at random); a boosted classifier decides whether the baby leaves after the board.</span></div></div>
           </div>
         </Card>
-        <Card n={`fitted on ${cnt(data.counts?.train?.stays, "training stays")} (${cnt(data.counts?.train?.baby_shifts, "baby-shifts")})`} title="Deep learning" sub={`${g.dl?.label} · ${g.dl?.epochs} epochs, ${g.dl?.fit_seconds}s`} right={<span className="badge" style={{ background: p.series[2] + "22" }}>DL</span>}>
+        <Card n={`fitted on ${cnt(data.counts?.train?.fit_baby_shifts ?? data.counts?.train?.baby_shifts, "baby-shifts")} before the holdout (${cnt(data.counts?.train?.fit_stays ?? data.counts?.train?.stays, "stays")})`} title="Deep learning" sub={`${g.dl?.label} · ${g.dl?.epochs} epochs, ${g.dl?.fit_seconds}s`} right={<span className="badge" style={{ background: p.series[2] + "22" }}>DL</span>}>
           <div className="steps" style={{ ["--step" as any]: p.series[2] }}>
             <div className="step"><div><b>Birth facts: variational autoencoder</b><span>A VAE learns the joint shape of the birth facts in a small latent space; new babies are decoded from random points in it.</span></div></div>
             <div className="step"><div><b>The stay: a recurrent network (GRU)</b><span>Reads the board before (labels as learned embeddings, flags, weight) and the birth facts, and keeps a memory of the whole stay so far.</span></div></div>

@@ -119,7 +119,7 @@ export default function Feeding({ data, mode, embedded }: Props) {
           <Legend items={bands.filter((b) => gv[b]?.length).map((b) => ({ color: bandColor(b), label: label(b) }))} />
           <TableView head={["Born", "Week of life", "Median g/kg/day", "Middle half", "Babies"]} rows={bands.flatMap((b) => (gv[b] || []).map((r) => [b, r[0], num(r[1], 1), `${num(r[2], 1)} to ${num(r[3], 1)}`, r[4]]))} />
         </Card>
-        <Card n={cnt(exBands.reduce((a, b) => a + ex[b].n, 0), "completed stays")} title="Corrected age when leaving" sub="Median (dot) and middle half (bar) for stays that began and ended in the data">
+        <Card n={cnt(exBands.reduce((a, b) => a + ex[b].n, 0), "stays that left while the boards were kept")} title="Corrected age when leaving" sub="Median (dot) and middle half (bar). Every baby who left while the boards were kept counts, including babies already on the unit on the first board (their age when leaving is known); babies still there on the last board are left out.">
           <Chart option={exitChart} height={300} label="Corrected age at leaving by GA band" />
           <TableView head={["Born", "Stays", "Median", "Middle half", "10th–90th"]} rows={exBands.map((b) => [b, ex[b].n, wd(ex[b].median), `${wd(ex[b].q1, "")} to ${wd(ex[b].q3)}`, `${wd(ex[b].p10, "")} to ${wd(ex[b].p90)}`])} />
         </Card>

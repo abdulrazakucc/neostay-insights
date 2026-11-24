@@ -56,9 +56,10 @@ function barOption(mode: Mode, labels: string[], sets: { name: string; values: n
 }
 
 /* One count distribution: shares in the chart, counts and shares in the table. */
-function CountCard({ mode, sets, title, sub, pick, labels, names, wide, horizontal, height = 250, unit, note, share = true, of }:
+function CountCard({ mode, sets, title, sub, pick, labels, names, wide, horizontal, height = 250, unit, note, share = true, of, missing, missingWhat }:
   { mode: Mode; sets: Set[]; title: string; sub: string; pick: (b: any) => number[] | undefined; labels: string[]; names?: Record<string, string>;
-    wide?: boolean; horizontal?: boolean; height?: number; unit: string; note?: string; share?: boolean; of?: (b: any) => number }) {
+    wide?: boolean; horizontal?: boolean; height?: number; unit: string; note?: string; share?: boolean; of?: (b: any) => number;
+    missing?: (b: any) => number | undefined; missingWhat?: string }) {
   const shown = sets.filter((s) => pick(s.block));
   if (!shown.length) return null;
   const lab = labels.map((l) => names?.[l] ?? l);
@@ -66,10 +67,12 @@ function CountCard({ mode, sets, title, sub, pick, labels, names, wide, horizont
   const series = shown.map((s) => { const c = pick(s.block)!; const d = of ? of(s.block) || 1 : 0;
     return { name: s.name, color: s.color, counts: c, values: of ? c.map((v) => v / d) : share ? shares(c) : c }; });
   return (
-    <Card wide={wide} title={title} sub={sub} n={shown.map((s) => `${s.name.toLowerCase()} ${(of ? of(s.block) : sum(pick(s.block)!)).toLocaleString()}`).join(" · ") + ` ${unit}`}
+    <Card wide={wide} title={title} sub={sub} n={shown.map((s) => `${s.name.toLowerCase()} ${(of ? of(s.block) : sum(pick(s.block)!)).toLocaleString()}`).join(" · ") + ` ${unit}`
+      + (missing && shown.some((s) => missing(s.block)) ? ` · not recorded: ${shown.map((s) => `${s.name.split(" ")[0].toLowerCase()} ${(missing(s.block) ?? 0).toLocaleString()}`).join(", ")}` : "")}
       right={shown.length > 1 ? <Legend items={shown.map((s) => ({ color: s.color, label: s.name }))} /> : undefined}>
       <Chart option={barOption(mode, lab, series, { share: share || !!of, horizontal })} height={height} label={title} />
       {note && <div className="note">{note}</div>}
+      {missing && shown.some((s) => missing(s.block)) && <div className="note">Left out because {missingWhat ?? "the field is blank on the board"}: {shown.map((s) => `${(missing(s.block) ?? 0).toLocaleString()} ${s.name.toLowerCase()}`).join(", ")} {unit}. Shares are of the {unit} where it is recorded.</div>}
       <TableView head={["", ...shown.flatMap((s) => share || of ? [`${s.name}: count`, of ? `share of ${unit}` : "share"] : [s.name])]}
         rows={lab.map((l, i) => [l, ...series.flatMap((s) => share || of ? [s.counts[i].toLocaleString(), pct(s.values[i], 1)] : [num(s.counts[i], 1)])])} />
     </Card>
@@ -84,6 +87,7 @@ export default function Counts({ mode, center }: Props & { center: any }) {
   useSection("counts");
   const p = PALETTE[mode];
   const [band, setBand] = useState("all");
+  const [measure, setMeasure] = useState("done");
   const [tier, setTier] = useState("intensive");
   if (!center) return <div className="empty">Loading the center…</div>;
   const c = center.counts;
@@ -95,6 +99,7 @@ export default function Counts({ mode, center }: Props & { center: any }) {
   const first = sets[0].block;
   const per30 = (b: any, v: number) => (v / Math.max(b.flow.days, 1)) * 30;
   const bands = Object.keys(first.stays.los_by_band);
+  const pickL = (b: any) => (measure === "seen" ? b.stays.los_seen_all : band === "all" ? b.stays.los : b.stays.los_by_band[band]);
   const kpiPair = (f: (b: any) => string) => sets.map((s) => f(s.block)).join(" / ");
   const who = sets.length > 1 ? "real / synthetic" : "synthetic";
   const staff = c.synthetic?.staff;
@@ -108,31 +113,41 @@ export default function Counts({ mode, center }: Props & { center: any }) {
           <a key={id} href={`#counts/${id}`}>{l}</a>)}
       </div>
 
+      <div className="note"><b>Why the n changes from chart to chart.</b> Each chart counts what it is about, and says so in its n line:
+        stays (every baby's stay, {kpiPair((b) => b.stays.n.toLocaleString())}); completed stays (true length known, {kpiPair((b) => b.stays.completed.toLocaleString())});
+        baby-shifts (one baby on one board, {kpiPair((b) => b.care.baby_shifts.toLocaleString())}); boards (one per shift, {kpiPair((b) => b.flow.boards.toLocaleString())});
+        days with boards ({kpiPair((b) => b.flow.days.toLocaleString())}); or only the babies who ever had a given care (for example days on CPAP).
+        Where a field is blank on some boards, the chart says how many were left out.</div>
       <SectionHead id="stays" title="Stays" lead="How many babies came, how long each stay lasted, and how sick they were at their worst. Length of stay counts completed stays only (admitted and discharged inside the data)." />
       <div className="kpis">
-        <Kpi label="Stays" value={kpiPair((b) => b.stays.n.toLocaleString())} sub={who} />
-        <Kpi label="Stays per 30 days" value={kpiPair((b) => num(per30(b, b.stays.n), 1))} sub={`${who}; over ${kpiPair((b) => b.flow.days.toLocaleString())} days`} />
+        <Kpi label="Stays" value={kpiPair((b) => b.stays.n.toLocaleString())} sub={`${kpiPair((b) => (b.stays.completeness?.completed ?? b.stays.completed).toLocaleString())} completed (${who})`} />
+        <Kpi label="Admissions per 30 days" value={kpiPair((b) => num(per30(b, b.stays.completeness?.admitted ?? b.stays.n), 1))} sub={`${who}; babies admitted over ${kpiPair((b) => b.flow.days.toLocaleString())} days with boards`} />
         <Kpi label="Median stay" value={kpiPair((b) => `${num(b.stays.los.median, 1)} d`)} sub={`completed stays (${who})`} />
         <Kpi label="Mean stay" value={kpiPair((b) => `${num(b.stays.los.mean, 1)} d`)} sub="pulled up by the long stays" />
         <Kpi label="Longest stay" value={kpiPair((b) => `${num(b.stays.los.max, 0)} d`)} sub={who} />
       </div>
       <div className="grid">
-        <Card wide title="How long each stay lasted" sub="Completed stays by length; pick a gestational-age group to see its own spread"
-          n={sets.map((s) => `${s.name.toLowerCase()} ${(band === "all" ? s.block.stays.los : s.block.stays.los_by_band[band]).n.toLocaleString()}`).join(" · ") + " completed stays"}
-          right={<Segmented options={[{ key: "all", label: "All babies" }, ...bands.map((b) => ({ key: b, label: `born ${b}` }))]} value={band} onChange={setBand} />}>
+        <Card wide title="How long each stay lasted" sub="True length: completed stays only. Days in the data: every stay, counting only the days it was on the unit while the boards were kept"
+          n={sets.map((s) => `${s.name.toLowerCase()} ${pickL(s.block).n.toLocaleString()}`).join(" · ") + (measure === "done" ? " completed stays" : " stays (all)")}
+          right={<div className="seg-stack"><Segmented options={[{ key: "done", label: "True length (completed)" }, { key: "seen", label: "Days in the data (all stays)" }]} value={measure} onChange={setMeasure} />
+            {measure === "done" && <Segmented options={[{ key: "all", label: "All babies" }, ...bands.map((b) => ({ key: b, label: `born ${b}` }))]} value={band} onChange={setBand} />}</div>}>
           {(() => {
-            const pickL = (b: any) => (band === "all" ? b.stays.los : b.stays.los_by_band[band]);
             const series = sets.map((s) => ({ name: s.name, color: s.color, counts: pickL(s.block).counts as number[], values: shares(pickL(s.block).counts) }));
             return (<>
-              {sets.length > 1 && <Legend items={sets.map((s) => ({ color: s.color, label: `${s.name}: median ${num(pickL(s.block).median, 1)} d` }))} />}
+              <Legend items={sets.map((s) => ({ color: s.color, label: `${s.name}: median ${num(pickL(s.block).median, 1)} d` }))} />
               <Chart option={barOption(mode, first.stays.los.labels, series)} height={270} label="Length of stay" />
+              <div className="note">{sets.map((s) => { const c = s.block.stays.completeness; return c ? (
+                <span key={s.key} style={{ display: "block" }}><b>{s.name}: {c.all.toLocaleString()} stays.</b> {c.completed.toLocaleString()} began and ended while the boards were kept, so their true length is known.
+                  {" "}{c.already_on_unit.toLocaleString()} were already on the unit on the first board and {c.still_on_unit.toLocaleString()} were still there on the last
+                  {c.both ? ` (${c.both} both)` : ""}: their true length is unknown, so {measure === "done" ? "they are left out here" : "they count with the days seen, which is less than their true length"}.</span>) : null; })}
+              </div>
               <TableView head={["Length of stay", ...sets.flatMap((s) => [`${s.name}: stays`, "share"])]}
                 rows={first.stays.los.labels.map((l: string, i: number) => [l, ...series.flatMap((s) => [s.counts[i].toLocaleString(), pct(s.values[i], 1)])])} />
             </>);
           })()}
         </Card>
         <CountCard mode={mode} sets={sets} title="Stays by gestational age at birth" sub="How many babies of each maturity were admitted" pick={(b) => b.stays.by_ga_band.counts} labels={first.stays.by_ga_band.labels} unit="stays" />
-        <CountCard mode={mode} sets={sets} title="Stays by birth weight" sub="WHO bands: extremely low (<1,000 g), very low (<1,500 g) and low (<2,500 g) birth weight" pick={(b) => b.stays.by_bw_band.counts} labels={first.stays.by_bw_band.labels} unit="stays" />
+        <CountCard mode={mode} sets={sets} title="Stays by birth weight" sub="WHO bands: extremely low (<1,000 g), very low (<1,500 g) and low (<2,500 g) birth weight" pick={(b) => b.stays.by_bw_band.counts} labels={first.stays.by_bw_band.labels} unit="stays" missing={(b) => b.stays.by_bw_band.not_recorded} missingWhat="no birth weight is recorded" />
         <CountCard mode={mode} sets={sets} title="Bed-days by gestational age" sub="Who uses the beds: share of all bed-days (one baby in a bed for one day)" pick={(b) => b.stays.bed_days_by_band.days} labels={first.stays.bed_days_by_band.labels} unit="bed-days" note="The table gives bed-days." />
         <CountCard mode={mode} sets={sets} title="Highest nurse ratio during the stay" sub="Stays by the most nursing they ever needed" pick={(b) => b.stays.worst_ratio.counts} labels={first.stays.worst_ratio.labels} unit="stays" />
         <CountCard mode={mode} sets={sets} title="Ratio changes per stay" sub="How many times a baby's ratio changed from one shift to the next during the stay" pick={(b) => b.stays.ratio_changes.counts} labels={first.stays.ratio_changes.labels} unit="stays" />
@@ -147,9 +162,9 @@ export default function Counts({ mode, center }: Props & { center: any }) {
       </div>
       <div className="grid">
         <CountCard mode={mode} sets={sets} title="Baby-shifts by nurse ratio" sub="How often each ratio was needed" pick={(b) => b.care.by_ratio.counts} labels={first.care.by_ratio.labels} unit="baby-shifts" />
-        <CountCard mode={mode} sets={sets} title="Baby-shifts by skill tier of the care" sub="The acuity tool's tier: continuing (1:3-4, 1:3), intermediate (1:2-3), intensive (1:2, 1:1)" pick={(b) => b.care.by_tier.counts} labels={first.care.by_tier.labels} names={TIER_NAMES} unit="baby-shifts" />
-        <CountCard mode={mode} sets={sets} title="Baby-shifts by breathing support" sub="From the most support (ventilator, HFOV counted with it) to room air" pick={(b) => b.care.by_mode.counts} labels={first.care.by_mode.labels} names={MODE_NAMES} unit="baby-shifts" />
-        <CountCard mode={mode} sets={sets} title="Baby-shifts by feeding stage" sub="Read from the feeding label on the board" pick={(b) => b.care.by_feed_stage.counts} labels={first.care.by_feed_stage.labels} unit="baby-shifts" horizontal height={260} />
+        <CountCard mode={mode} sets={sets} title="Baby-shifts by skill tier of the care" sub="The acuity tool's tier: continuing (1:3-4, 1:3), intermediate (1:2-3), intensive (1:2, 1:1)" pick={(b) => b.care.by_tier.counts} labels={first.care.by_tier.labels} names={TIER_NAMES} unit="baby-shifts" missing={(b) => b.care.by_tier.not_recorded} />
+        <CountCard mode={mode} sets={sets} title="Baby-shifts by breathing support" sub="From the most support (ventilator, HFOV counted with it) to room air" pick={(b) => b.care.by_mode.counts} labels={first.care.by_mode.labels} names={MODE_NAMES} unit="baby-shifts" missing={(b) => b.care.by_mode.not_recorded} missingWhat="the breathing support is blank on the board" />
+        <CountCard mode={mode} sets={sets} title="Baby-shifts by feeding stage" sub="Read from the feeding label on the board" pick={(b) => b.care.by_feed_stage.counts} labels={first.care.by_feed_stage.labels} unit="baby-shifts" horizontal height={260} missing={(b) => b.care.by_feed_stage.not_recorded} missingWhat="the feeding label is blank or cannot be read as a stage" />
         <CountCard mode={mode} sets={sets} title="Babies ever on each breathing support" sub="Share of stays with at least one board on it" pick={(b) => b.care.stays_ever_mode.counts} labels={first.care.stays_ever_mode.labels} names={MODE_NAMES} unit="stays" of={(b) => b.stays.n} note="Share of all stays; a baby can count under several supports." />
         <CountCard mode={mode} sets={sets} title="Days on CPAP or more, per baby" sub="Babies who ever needed ventilator, NIPPV or CPAP, by days on it (seen on the boards)" pick={(b) => b.care.days_cpap_or_more.counts} labels={first.care.days_cpap_or_more.labels} unit="babies" />
         <CountCard mode={mode} sets={sets} title="Days at the intensive tier, per baby" sub="Babies who ever needed 1:2 or 1:1, by days at that tier" pick={(b) => b.care.days_intensive_tier.counts} labels={first.care.days_intensive_tier.labels} unit="babies" />

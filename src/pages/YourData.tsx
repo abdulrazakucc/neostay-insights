@@ -285,7 +285,8 @@ export function BabiesNurses(props: Props) {
         {wb.map((b) => <Kpi key={b} label={`Born ${b}`} value={`${num(w[b].median, 0)}`} sub={`median nurse-shifts per stay; ${pct(w[b].share, 0)} of all nursing`} accent={p.band[wb.indexOf(b)]} />)}
       </div>
       <div className="grid">
-        <Card n={`${cnt(table.shifts.reduce((a: number, b: number) => a + b, 0), "baby-shifts")} from ${cnt(by === "band" ? table.stays.reduce((a: number, b: number) => a + b, 0) : data.nurses?.stays, "stays")}`} wide id="sec-sets" title="What sets the nurse ratio" sub="Share of baby-shifts at each ratio (groups with 5 or more babies)"
+        <Card n={`${cnt(table.shifts.reduce((a: number, b: number) => a + b, 0), "baby-shifts")} of ${cnt(data.real?.kpis?.baby_shifts, "")}from ${cnt(by === "band" ? table.stays.reduce((a: number, b: number) => a + b, 0) : data.nurses?.stays, "stays")}`} wide id="sec-sets" title="What sets the nurse ratio"
+          sub={`Share of baby-shifts at each ratio (groups with 5 or more babies). Baby-shifts with the ${by === "mode" ? "breathing support" : by === "stage" ? "feeding label" : "gestational age"} blank on the board are left out.`}
           right={<div className="row"><Segmented value={by} onChange={setBy} options={[{ key: "mode", label: "By breathing support" }, { key: "stage", label: "By feeding" }, { key: "band", label: "By gestational age" }]} />
             <Legend items={RATIOS.map((r, i) => ({ color: p.ratio[i], label: r }))} /></div>}>
           <Chart option={stack} height={Math.max(200, table.rows.length * 34 + 40)} label="Nurse ratio by group" />
