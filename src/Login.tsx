@@ -34,7 +34,7 @@ export default function Login({ onSignedIn }: { onSignedIn: () => void }) {
           <div><b>NeoStay</b><small>Insights</small></div>
         </div>
         <h1>Sign in</h1>
-        <p className="login-lead">Private NICU insights prepared for Dr. Waseem Altaf.</p>
+        <p className="login-lead">NICU insights for doctors and nurse management.</p>
         <label>
           <span>Username</span>
           <input autoComplete="username" autoCapitalize="none" spellCheck={false} value={user} onChange={(e) => setUser(e.target.value)} required autoFocus />

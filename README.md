@@ -1,6 +1,6 @@
 # NeoStay Insights
 
-A sign-in web app that gives Dr. Waseem Altaf the NeoStay NICU insights built in `acuity-models`:
+A sign-in web app that gives doctors and nurse management the NeoStay NICU insights built in `acuity-models`:
 babies and stays, nurse staffing and ratios, the six centers (Center 6 real data, Centers 1–5 synthetic
 scenarios), real-versus-synthetic evidence, and the predictive model evaluation.
 
