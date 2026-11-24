@@ -1,0 +1,8 @@
+# Plain data (real Center 6 aggregates): never committed. Only encrypted copies in public/data/ are.
+data-private/
+.credentials
+.env*
+node_modules/
+dist/
+*.tsbuildinfo
+.DS_Store
