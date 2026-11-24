@@ -211,3 +211,29 @@ input { background: var(--card); color: var(--ink); border: 1px solid var(--axis
 :root[data-theme="dark"] .login-error { color: #ff8a8a; }
 .login-foot { color: var(--muted); font-size: 12px; line-height: 1.45; }
 .login .empty { color: var(--side-ink); }
+
+/* Counts page: section headings and jump links */
+.count-jump { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 8px; }
+.count-jump a { padding: 6px 12px; border-radius: 999px; background: var(--chip); color: var(--soft); font-size: 12.5px; font-weight: 600; }
+.count-jump a:hover { color: var(--ink); }
+.count-sec { margin: 28px 0 12px; scroll-margin-top: 16px; }
+.count-sec h2 { font-family: var(--display); font-size: 20px; margin: 0 0 4px; }
+.count-sec p { margin: 0; color: var(--soft); font-size: 13.5px; max-width: 900px; }
+.note.warn-note { background: rgba(250, 178, 25, 0.12); }
+.note.good-note { background: rgba(12, 163, 12, 0.08); }
+
+/* Prediction scorecard */
+.sc-model { font-size: 12.5px; color: var(--soft); margin: 2px 0 8px; }
+.sc-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.sc-table th { text-align: left; font-size: 11px; letter-spacing: 0.4px; text-transform: uppercase; color: var(--muted); padding: 8px 10px; border-bottom: 1px solid var(--line); }
+.sc-table td { padding: 9px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+.sc-table td small { display: block; color: var(--muted); font-size: 11.5px; line-height: 1.4; }
+.sc-table a { color: var(--accent); }
+.sc-val { font-variant-numeric: tabular-nums; font-weight: 700; white-space: nowrap; }
+.meter { position: relative; height: 6px; width: 90px; border-radius: 999px; background: var(--chip); margin-top: 6px; }
+.meter i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 999px; }
+.meter b { position: absolute; top: -3px; width: 2px; height: 12px; border-radius: 1px; transform: translateX(-1px); }
+.sc-gloss { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px; }
+.sc-gloss div { background: var(--chip); border-radius: 12px; padding: 10px 12px; }
+.sc-gloss b { display: block; font-size: 13px; margin-bottom: 2px; }
+.sc-gloss span { font-size: 12.5px; color: var(--soft); }

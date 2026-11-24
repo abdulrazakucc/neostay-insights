@@ -6,6 +6,19 @@ scenarios), real-versus-synthetic evidence, and the predictive model evaluation.
 
 Hosted on GitHub Pages: https://abdulrazakucc.github.io/neostay-insights/
 
+## What is in it
+
+- **Overview**, then for Center 6: **Babies**, **Nurses**, **Babies & nurses** (real data), **Counts: real &
+  synthetic** (stays and how long they lasted, care, admissions and census, nursing by skill tier, simulated
+  nurse shifts), the synthetic-data and evaluation pages, and the models.
+- **How good are the predictions?**: every prediction scored in plain words beside the simple rule it must
+  beat, with its status (ready for a silent trial, not ready, measured but not yet gated).
+- Centers 1–5 (synthetic scenarios): configuration, synthetic insights, longitudinal and operational
+  analysis, staffing, **Counts**, validation.
+
+A plain-language guide to every page, with screenshots, is built in `acuity-models`
+(`docs/neostay/insights-brief/NeoStay-Insights-Brief.pdf`).
+
 ## How the data is protected
 
 This repository and its Pages site are public, and the Center 6 data describes real babies. So the data

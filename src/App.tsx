@@ -5,6 +5,8 @@ import Overview from "./pages/Overview";
 import { Babies, Nurses, BabiesNurses } from "./pages/YourData";
 import Models from "./pages/Models";
 import Predictive from "./pages/Predictive";
+import Counts from "./pages/Counts";
+import Scorecard from "./pages/Scorecard";
 import { Synthetic, Compare } from "./pages/Synthetic";
 import { CenterConfig, Evaluation, Generation, Longitudinal, Operations, Staffing, SynthInsights, useCenterData, Validation } from "./pages/Center";
 
@@ -31,12 +33,15 @@ function pagesFor(center: any): Page[] {
         subs: [["ratio", "Babies by ratio"], ["needed", "Nurses needed"], ["levels", "Staffing levels"], ["week", "Weekday & ratio mix"]] },
       { key: "babies-nurses", label: "Babies & nurses", group: g1, icon: "⇋", el: BabiesNurses,
         subs: [["sets", "What sets the ratio"], ["at-ratio", "Babies at each ratio"], ["per-baby", "Nursing per baby"], ["through", "Ratio through the stay"], ["changes", "Shift-to-shift changes"]] },
+      { key: "counts", label: "Counts: real & synthetic", group: g1, icon: "#", el: Counts,
+        subs: [["stays", "Stays"], ["care", "Care"], ["unit", "Admissions & census"], ["nursing", "Nursing by skill"], ["staff", "Nurse shifts"]] },
       { key: "c-synthetic", label: "Synthetic data insights", group: g2, icon: "✦", el: SynthInsights },
       { key: "c-compare", label: "Real vs synthetic", group: g2, icon: "⇄", el: RealVsSynth, subs: [["evidence", "Evidence and decision"], ["detail", "Detailed comparison"]] },
       { key: "c-longitudinal", label: "Longitudinal patient analysis", group: g2, icon: "↗", el: Longitudinal },
       { key: "c-operations", label: "NICU operational analysis", group: g2, icon: "▦", el: Operations },
       { key: "c-quality", label: "Data quality and validation", group: g2, icon: "✓", el: Validation },
       { key: "c-generation", label: "Generation and reports", group: g2, icon: "⚙", el: (pp: any) => <Generation {...pp} generatorsPage={<Synthetic {...pp} />} /> },
+      { key: "scorecard", label: "How good are the predictions?", group: "Models", icon: "★", el: Scorecard },
       { key: "predictive", label: "Predictive modeling & evaluation", group: "Models", icon: "◆", el: Predictive,
         subs: [["overview", "Forecasting overview"], ["experiments", "Training and experiments"], ["architectures", "Model architectures"], ["comparison", "Model comparison"],
           ["journey", "Patient journey evaluation"], ["calibration", "Calibration and reliability"], ["explain", "Explainability"], ["errors", "Error analysis"], ["registry", "Model registry"]] },
@@ -50,9 +55,12 @@ function pagesFor(center: any): Page[] {
     { key: "c-longitudinal", label: "Longitudinal patient analysis", group: g, icon: "↗", el: Longitudinal },
     { key: "c-operations", label: "NICU operational analysis", group: g, icon: "▦", el: Operations },
     { key: "c-staffing", label: "Staffing and care requirements", group: g, icon: "✚", el: Staffing },
+    { key: "counts", label: "Counts", group: g, icon: "#", el: Counts,
+      subs: [["stays", "Stays"], ["care", "Care"], ["unit", "Admissions & census"], ["nursing", "Nursing by skill"], ["staff", "Nurse shifts"]] },
     { key: "c-validation", label: "Scenario and constraint validation", group: g, icon: "✓", el: Validation },
     { key: "c-generation", label: "Generation and reports", group: g, icon: "⚙", el: Generation },
     { key: "c-compare-off", label: "Real vs synthetic", group: g, icon: "⇄", disabled: "No real data available for this center: real-versus-synthetic comparison exists for Center 6 only." },
+    { key: "scorecard", label: "How good are the predictions?", group: "Models (evaluated on Center 6)", icon: "★", el: Scorecard },
     { key: "predictive", label: "Predictive modeling & evaluation", group: "Models (evaluated on Center 6)", icon: "◆", el: Predictive,
         subs: [["overview", "Forecasting overview"], ["experiments", "Training and experiments"], ["architectures", "Model architectures"], ["comparison", "Model comparison"],
           ["journey", "Patient journey evaluation"], ["calibration", "Calibration and reliability"], ["explain", "Explainability"], ["errors", "Error analysis"], ["registry", "Model registry"]] },
