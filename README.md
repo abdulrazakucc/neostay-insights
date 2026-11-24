@@ -18,7 +18,8 @@ Hosted on GitHub Pages: https://abdulrazakucc.github.io/neostay-insights/
 
 - **Guide (PDF)** under Start: the plain-language guide to every page, with screenshots, to read in the app or
   download. It is built in `acuity-models` (`docs/neostay/insights-brief/NeoStay-Insights-Brief.pdf`);
-  `npm run sync-data` copies it to `data-private/guide.pdf` and `npm run encrypt` encrypts it like the data,
+  `npm run sync-data` copies it to `data-private/guide.pdf`, with `guide_sections.json` (each section's page,
+  so a click on a section title opens the PDF there), and `npm run encrypt` encrypts both like the data,
   because its screenshots show real results. The deploy refuses any plain PDF under `public/`.
 
 ## How the data is protected

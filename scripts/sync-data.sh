@@ -15,4 +15,7 @@ cp -R "$SRC/." "$DEST/"
 # The plain-language guide (PDF with screenshots of real data): encrypted like the data, never published plain.
 GUIDE="$ACUITY/docs/neostay/insights-brief/NeoStay-Insights-Brief.pdf"
 if [ -f "$GUIDE" ]; then cp "$GUIDE" "$DEST/guide.pdf"; else echo "Guide PDF not found at $GUIDE: the Guide page will be empty." >&2; fi
+# Its sections and their pages (sections.py), so the Guide page can open the PDF at a section.
+SECTIONS="$(dirname "$GUIDE")/guide_sections.json"
+if [ -f "$SECTIONS" ]; then cp "$SECTIONS" "$DEST/guide_sections.json"; fi
 echo "Copied data from $SRC into data-private/. Next: npm run encrypt"
