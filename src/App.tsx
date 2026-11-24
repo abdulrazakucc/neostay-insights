@@ -7,6 +7,7 @@ import Models from "./pages/Models";
 import Predictive from "./pages/Predictive";
 import Counts from "./pages/Counts";
 import Scorecard from "./pages/Scorecard";
+import Guide from "./pages/Guide";
 import { Synthetic, Compare } from "./pages/Synthetic";
 import { CenterConfig, Evaluation, Generation, Longitudinal, Operations, Staffing, SynthInsights, useCenterData, Validation } from "./pages/Center";
 
@@ -21,12 +22,14 @@ function RealVsSynth(props: any) {
 }
 
 function pagesFor(center: any): Page[] {
-  if (!center) return [{ key: "overview", label: "Overview", group: "Start", icon: "◎", el: Overview }];
+  const guide: Page = { key: "guide", label: "Guide (PDF)", group: "Start", icon: "▤", el: Guide };
+  if (!center) return [{ key: "overview", label: "Overview", group: "Start", icon: "◎", el: Overview }, guide];
   const name = center.name;
   if (center.has_real_data) {
     const g1 = `${name} · real data insights`, g2 = `${name} · synthetic and evaluation`;
     return [
       { key: "overview", label: "Overview", group: "Start", icon: "◎", el: Overview },
+      guide,
       { key: "babies", label: "Babies", group: g1, icon: "◐", el: Babies,
         subs: [["stays", "Baby stays"], ["birth", "Birth & length of stay"], ["care", "Care during the stay"], ["feeding", "Feeding & growth"]] },
       { key: "nurses", label: "Nurses", group: g1, icon: "✚", el: Nurses,
@@ -50,6 +53,7 @@ function pagesFor(center: any): Page[] {
   }
   const g = `${name} · synthetic scenario`;
   return [
+    guide,
     { key: "c-config", label: "Center configuration", group: g, icon: "⚑", el: CenterConfig },
     { key: "c-synthetic", label: "Synthetic data insights", group: g, icon: "✦", el: SynthInsights },
     { key: "c-longitudinal", label: "Longitudinal patient analysis", group: g, icon: "↗", el: Longitudinal },

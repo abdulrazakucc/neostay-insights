@@ -16,15 +16,17 @@ Hosted on GitHub Pages: https://abdulrazakucc.github.io/neostay-insights/
 - Centers 1–5 (synthetic scenarios): configuration, synthetic insights, longitudinal and operational
   analysis, staffing, **Counts**, validation.
 
-A plain-language guide to every page, with screenshots, is built in `acuity-models`
-(`docs/neostay/insights-brief/NeoStay-Insights-Brief.pdf`).
+- **Guide (PDF)** under Start: the plain-language guide to every page, with screenshots, to read in the app or
+  download. It is built in `acuity-models` (`docs/neostay/insights-brief/NeoStay-Insights-Brief.pdf`);
+  `npm run sync-data` copies it to `data-private/guide.pdf` and `npm run encrypt` encrypts it like the data,
+  because its screenshots show real results. The deploy refuses any plain PDF under `public/`.
 
 ## How the data is protected
 
 This repository and its Pages site are public, and the Center 6 data describes real babies. So the data
 is **never committed in plain form**:
 
-- `npm run encrypt` gzips each JSON file and encrypts it with AES-256-GCM. The key is derived from the
+- `npm run encrypt` gzips each JSON file (and the PDF guide) and encrypts it with AES-256-GCM. The key is derived from the
   username and password with PBKDF2-SHA256 (600,000 iterations, random salt per run).
 - Only the ciphertext (`public/data/**/*.enc`) and the salt (`public/data/vault.json`) are committed.
 - On sign-in the browser derives the key and decrypts. A wrong username or password fails the GCM

@@ -25,8 +25,8 @@ jobs:
       - run: npm ci --no-audit --no-fund
       - name: Refuse plain data
         run: |
-          if find public -name '*.json' ! -name 'vault.json' | grep -q .; then
-            echo "Plain JSON found under public/: only encrypted .enc files may be published." >&2
+          if find public \( -name '*.json' ! -name 'vault.json' \) -o -name '*.pdf' | grep -q .; then
+            echo "Plain JSON or PDF found under public/: only encrypted .enc files may be published." >&2
             exit 1
           fi
           test -f public/data/vault.json || { echo "public/data/vault.json missing: run npm run encrypt." >&2; exit 1; }

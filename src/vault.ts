@@ -1,7 +1,7 @@
 /* Encrypted data access.
 
    The hosted site is public, so the data files are never published in plain form. `npm run encrypt`
-   (scripts/encrypt-data.mjs) gzips and encrypts each JSON file with AES-256-GCM. The key comes from the
+   (scripts/encrypt-data.mjs) gzips and encrypts each JSON file (and the PDF guide) with AES-256-GCM. The key comes from the
    username and password through PBKDF2-SHA256. Only the ciphertext (public/data/*.enc) and the salt
    (public/data/vault.json) are published. A wrong username or password fails the GCM check, so nothing
    decrypts.
@@ -35,17 +35,19 @@ async function deriveKey(username: string, password: string, v: Vault): Promise<
   );
 }
 
-async function gunzip(bytes: ArrayBuffer): Promise<string> {
-  const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream("gzip"));
-  return new Response(stream).text();
+function gunzip(bytes: ArrayBuffer): Response {
+  return new Response(new Blob([bytes]).stream().pipeThrough(new DecompressionStream("gzip")));
 }
 
-async function decryptFile(path: string, k: CryptoKey): Promise<any> {
+async function decryptBytes(path: string, k: CryptoKey): Promise<ArrayBuffer> {
   const r = await fetch(`data/${path}.enc`, { cache: "no-store" });
   if (!r.ok) throw new Error(`Missing data file: ${path}`);
   const buf = new Uint8Array(await r.arrayBuffer());
-  const plain = await crypto.subtle.decrypt({ name: "AES-GCM", iv: buf.slice(0, 12) }, k, buf.slice(12));
-  return JSON.parse(await gunzip(plain));
+  return crypto.subtle.decrypt({ name: "AES-GCM", iv: buf.slice(0, 12) }, k, buf.slice(12));
+}
+
+async function decryptFile(path: string, k: CryptoKey): Promise<any> {
+  return JSON.parse(await gunzip(await decryptBytes(path, k)).text());
 }
 
 /* Sign in: derive the key and prove it by decrypting the center index. */
@@ -95,4 +97,12 @@ export function loadData(path: string): Promise<any> {
     cache.set(path, p);
   }
   return cache.get(path)!;
+}
+
+/* Read one encrypted document, e.g. "guide.pdf", as a Blob the browser can show or save. */
+const TYPES: Record<string, string> = { pdf: "application/pdf" };
+export async function loadFile(path: string): Promise<Blob> {
+  if (!key) throw new Error("Not signed in.");
+  const bytes = await gunzip(await decryptBytes(path, key)).arrayBuffer();
+  return new Blob([bytes], { type: TYPES[path.split(".").pop() ?? ""] ?? "application/octet-stream" });
 }

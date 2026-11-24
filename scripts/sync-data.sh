@@ -12,4 +12,7 @@ fi
 rm -rf "$DEST"
 mkdir -p "$DEST"
 cp -R "$SRC/." "$DEST/"
+# The plain-language guide (PDF with screenshots of real data): encrypted like the data, never published plain.
+GUIDE="$ACUITY/docs/neostay/insights-brief/NeoStay-Insights-Brief.pdf"
+if [ -f "$GUIDE" ]; then cp "$GUIDE" "$DEST/guide.pdf"; else echo "Guide PDF not found at $GUIDE: the Guide page will be empty." >&2; fi
 echo "Copied data from $SRC into data-private/. Next: npm run encrypt"

@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 /* Encrypt the plain data files for the hosted site.
 
-   Reads every *.json under data-private/ (git-ignored) and writes, under public/data/:
-     <path>.enc   12-byte IV followed by AES-256-GCM ciphertext of the gzipped JSON
+   Reads every *.json and *.pdf (the guide) under data-private/ (git-ignored) and writes, under public/data/:
+     <path>.enc   12-byte IV followed by AES-256-GCM ciphertext of the gzipped file
      vault.json   KDF parameters and a fresh random salt (no secrets)
 
    The key is PBKDF2-SHA256("<username lowercased>\n<password>", salt). It matches src/vault.ts.
@@ -44,7 +44,7 @@ function credentials() {
 function walk(dir) {
   return readdirSync(dir).flatMap((n) => {
     const p = join(dir, n);
-    return statSync(p).isDirectory() ? walk(p) : n.endsWith(".json") ? [p] : [];
+    return statSync(p).isDirectory() ? walk(p) : n.endsWith(".json") || n.endsWith(".pdf") ? [p] : [];
   });
 }
 
