@@ -9,6 +9,7 @@ import Counts from "./pages/Counts";
 import Scorecard from "./pages/Scorecard";
 import Guide from "./pages/Guide";
 import Metrics from "./pages/Metrics";
+import BayesNet from "./pages/BayesNet";
 import { Synthetic, Compare } from "./pages/Synthetic";
 import { CenterConfig, Evaluation, Generation, Longitudinal, Operations, Staffing, SynthInsights, useCenterData, Validation } from "./pages/Center";
 
@@ -45,6 +46,7 @@ function pagesFor(center: any): Page[] {
       { key: "c-operations", label: "NICU operational analysis", group: g2, icon: "▦", el: Operations },
       { key: "c-quality", label: "Data quality and validation", group: g2, icon: "✓", el: Validation },
       { key: "c-generation", label: "Generation and reports", group: g2, icon: "⚙", el: (pp: any) => <Generation {...pp} generatorsPage={<Synthetic {...pp} />} /> },
+      { key: "bayes", label: "Bayesian network", group: "Reasoning", icon: "⌬", el: BayesNet },
       { key: "scorecard", label: "How good are the predictions?", group: "Models", icon: "★", el: Scorecard },
       { key: "metrics", label: "Metrics explained", group: "Models", icon: "ℹ", el: Metrics },
       { key: "predictive", label: "Predictive modeling & evaluation", group: "Models", icon: "◆", el: Predictive,
@@ -66,6 +68,7 @@ function pagesFor(center: any): Page[] {
     { key: "c-validation", label: "Scenario and constraint validation", group: g, icon: "✓", el: Validation },
     { key: "c-generation", label: "Generation and reports", group: g, icon: "⚙", el: Generation },
     { key: "c-compare-off", label: "Real vs synthetic", group: g, icon: "⇄", disabled: "No real data available for this center: real-versus-synthetic comparison exists for Center 6 only." },
+    { key: "bayes", label: "Bayesian network", group: "Reasoning (this center's synthetic data)", icon: "⌬", el: BayesNet },
     { key: "scorecard", label: "How good are the predictions?", group: "Models (evaluated on Center 6)", icon: "★", el: Scorecard },
     { key: "metrics", label: "Metrics explained", group: "Models (evaluated on Center 6)", icon: "ℹ", el: Metrics },
     { key: "predictive", label: "Predictive modeling & evaluation", group: "Models (evaluated on Center 6)", icon: "◆", el: Predictive,

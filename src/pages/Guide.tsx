@@ -16,6 +16,7 @@ const ABOUT: Record<string, string> = {
   part4: "Stays and their length, care, admissions and census, nursing by skill, nurse shifts.", part5: "Computer-made babies: how realistic and how safe they are.",
   part6: "The scorecard: how good each prediction is today, in plain scores.", part7: "Made-up what-if units and what they show about beds and staffing.",
   part8: "What the results cannot tell us, and what we ask of you.",
+  bayes: "Draw how things relate, learn the chances from the data, and ask what-if questions.",
   metrics: "Every score and term used to judge the models and the synthetic data: plain words and technical definition.",
 };
 type Section = { key: string; level: number; title: string; page: number };

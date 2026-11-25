@@ -15,6 +15,7 @@ export const GROUPS = [
   "Synthetic data: how close to real",
   "Synthetic data: privacy",
   "Statistics used everywhere",
+  "Bayesian network",
 ];
 
 export const METRICS: Metric[] = [
@@ -260,5 +261,53 @@ export const METRICS: Metric[] = [
     technical: "Left truncation (already on the unit on the first board) and right censoring (still there on the last board, or at a test cut-off).",
     ideal: "—", where: "Counts; Babies; all survival scores" },
 ];
+
+// Bayesian network terms are appended below the statistics.
+METRICS.push(
+  { id: "bayes-net", name: "Bayesian network", group: "Bayesian network",
+    lay: "A drawing of how things influence each other (boxes and arrows), with the chances learned from the data. Tell it what you know about a baby and it works out how the chances of everything else change.",
+    technical: "A directed acyclic graph over discrete variables with one conditional probability table per variable; the joint distribution is the product of P(variable | parents).",
+    ideal: "—", where: "Bayesian network" },
+  { id: "arrow", name: "Arrow", group: "Bayesian network",
+    lay: "An arrow from A to B says 'A directly influences B'. No arrow means: once the other arrows are taken into account, A tells you nothing more about B. Arrows are your assumptions; the data then give the strength.",
+    technical: "A directed edge A → B makes A a parent of B; the graph encodes conditional independencies (d-separation). Loops are not allowed.",
+    ideal: "—", where: "Bayesian network" },
+  { id: "cpt", name: "Probability table", also: "conditional probability table, CPT", group: "Bayesian network",
+    lay: "For one variable: the chance of each of its values for every combination of the variables pointing into it.",
+    technical: "P(X = x | parents = j) for every parent configuration j; each row sums to 1.",
+    ideal: "—", where: "Bayesian network (step 2)" },
+  { id: "prior-posterior", name: "Before and after (prior and posterior)", group: "Bayesian network",
+    lay: "Before: the chances for all babies. After: the chances once you have told the network what you know about a baby.",
+    technical: "Prior marginal P(X); posterior P(X | evidence), computed from the network's joint distribution.",
+    ideal: "—", where: "Bayesian network (step 3)" },
+  { id: "evidence", name: "What you know (evidence)", group: "Bayesian network",
+    lay: "Values you set yourself, for example 'on CPAP' or 'born before 28 weeks'. The network then reasons forwards (to what follows) and backwards (to what probably came before).",
+    technical: "Hard evidence: variables fixed to one state; inference conditions the joint distribution on them.",
+    ideal: "—", where: "Bayesian network (step 3)" },
+  { id: "inference", name: "Reasoning (exact inference)", group: "Bayesian network",
+    lay: "Working out the new chances from what you know. It is exact arithmetic, not a simulation, so the same question always gives the same answer.",
+    technical: "Variable elimination with a greedy smallest-factor elimination order over the network's tables.",
+    ideal: "—", where: "Bayesian network (step 3)" },
+  { id: "bdeu", name: "Learning with a gentle starting guess (Dirichlet prior)", also: "BDeu, equivalent sample size 1", group: "Bayesian network",
+    lay: "Before counting, each chance starts from a tiny equal share, so a combination never seen in the data gets equal chances rather than an impossible 0%. With many cases the counts dominate.",
+    technical: "P(x | j) = (N_jx + α) / (N_j + α·r) with α = ESS / (q·r), ESS = 1 (BDeu), q parent configurations, r states.",
+    ideal: "—", where: "Bayesian network (step 2)" },
+  { id: "bic", name: "Fit of a network (BIC)", group: "Bayesian network",
+    lay: "One number for how well a drawing fits the data, with a penalty for extra arrows that add complexity without explaining more. Higher is better; only compare networks on the same data.",
+    technical: "2 × Σ over variables of [log-likelihood at the maximum-likelihood estimates − ½ · q(r − 1) · ln N], N = baby-shifts used for that variable.",
+    ideal: "Higher is better", where: "Bayesian network (steps 1–2)" },
+  { id: "bic-scale", name: "Arrow support", group: "Bayesian network",
+    lay: "How much the network's fit drops if this arrow is removed: very strong, strong, positive, barely, or not supported (the network fits better without it).",
+    technical: "ΔBIC of the child variable without the parent, on the same baby-shifts, read on Kass & Raftery's (1995) scale: 0–2 barely worth a mention, 2–6 positive, 6–10 strong, above 10 very strong.",
+    ideal: "Positive or stronger", where: "Bayesian network" },
+  { id: "available-case", name: "Unknown values", also: "available-case learning", group: "Bayesian network",
+    lay: "If a value is blank on a board (or not yet known, such as whether the baby left within 7 days of the last board), that baby-shift is skipped only for the tables that need that value.",
+    technical: "Each table is counted over the baby-shifts where the variable and all its parents are observed; nothing is imputed.",
+    ideal: "—", where: "Bayesian network" },
+  { id: "baby-shift-unit", name: "What is counted (baby-shifts)", group: "Bayesian network",
+    lay: "Every chance is a share of baby-shifts (one baby on one board). A baby who stays 40 days counts 80 times, so long stays weigh more than short ones.",
+    technical: "Unit of analysis = baby-shift; repeated shifts of a baby are treated as separate cases (not independent babies).",
+    ideal: "—", where: "Bayesian network" },
+);
 
 export const byId: Record<string, Metric> = Object.fromEntries(METRICS.map((m) => [m.id, m]));

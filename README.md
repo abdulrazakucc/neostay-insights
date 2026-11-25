@@ -15,6 +15,9 @@ Hosted on GitHub Pages: https://abdulrazakucc.github.io/neostay-insights/
   beat, the model used and why, the models compared, its pass marks and its status (ready for a silent trial,
   not ready, measured but not yet gated).
 - **Metrics explained**: every evaluation term in plain words and technical terms.
+- **Bayesian network** (Reasoning): draw and edit how the babies' facts and care relate, learn the
+  probabilities from the data (real Center 6 or any center's synthetic data) in the browser, and ask "what
+  if" questions. Its data files (`data/bn/*.json`) are encrypted like the rest.
 - Centers 1–5 (synthetic scenarios): configuration, synthetic insights, longitudinal and operational
   analysis, staffing, **Counts**, validation.
 
