@@ -2,6 +2,7 @@ import Chart from "../Chart";
 import { bySet, Card, Kpi, Legend, Ring } from "../ui";
 import { axis, base, KEYS, NAMES, num, PALETTE, pct, wd } from "../theme";
 import type { Props } from "../App";
+import { TermLink } from "./Metrics";
 
 export default function Overview({ data, mode, go }: Props) {
   const p = PALETTE[mode];
@@ -38,7 +39,7 @@ export default function Overview({ data, mode, go }: Props) {
               <Ring value={s.fidelity.dl.score} color={p.series[2]} label="Deep learning" sub="VAE + recurrent network" />
               <Ring value={s.fidelity.holdout.score} color={p.muted} label="New real stays" sub="later real stays vs earlier ones: the natural ceiling" />
             </div>
-            <div className="note">Both generators learned only from the boards before the last 75 days ({s.split.train_stays} stays first seen before the holdout); the {s.split.holdout_stays} stays admitted in the last 75 days judge them. No synthetic stay copies a real one (closest-record check).</div>
+            <div className="note">Both generators learned only from the boards before the last 75 days ({s.split.train_stays} stays first seen before the holdout); the {s.split.holdout_stays} stays admitted in the last 75 days judge them. No synthetic stay copies a real one (closest-record check). <TermLink id="fidelity" text="How the score is worked out" />.</div>
           </Card>
         )}
         {data.babies_compared && (

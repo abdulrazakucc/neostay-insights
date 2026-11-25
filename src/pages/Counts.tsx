@@ -4,6 +4,7 @@ import { Card, Kpi, Legend, PageHead, Segmented, TableView } from "../ui";
 import { axis, base, num, PALETTE, pct } from "../theme";
 import type { Props } from "../App";
 import { Banner } from "./Center";
+import { TermsBox } from "./Metrics";
 
 /* Count analyses (acuity_insights/counts.py): how many stays, babies, shifts, nurses and care episodes,
    real beside synthetic for Center 6 and synthetic alone for Centers 1-5. Charts show shares so a
@@ -108,6 +109,7 @@ export default function Counts({ mode, center }: Props & { center: any }) {
     <>
       <PageHead eyebrow={center.name} title="Counts" lead="How many: stays and how long they lasted, babies at each kind of care, admissions and census, the nurse-shifts the babies' ratios call for, and the shifts each nurse works. Real beside synthetic where both exist. Charts show shares so that 8 real months and decades of simulation sit on one scale; every table gives the counts." />
       <Banner center={center} />
+      <TermsBox ids={["censoring", "median"]} />
       <div className="count-jump">
         {[["stays", "Stays"], ["care", "Care"], ["unit", "Admissions & census"], ["nursing", "Nursing by skill"], ["staff", "Nurse shifts"]].map(([id, l]) =>
           <a key={id} href={`#counts/${id}`}>{l}</a>)}

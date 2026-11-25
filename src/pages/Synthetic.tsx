@@ -3,6 +3,7 @@ import Chart from "../Chart";
 import { bySet, Card, cnt, Kpi, Legend, PageHead, Ring, Segmented, TableView } from "../ui";
 import { axis, base, KEYS, NAMES, num, PALETTE, pct, wd } from "../theme";
 import type { Props } from "../App";
+import { TermsBox } from "./Metrics";
 
 const RATIOS = ["1:3-4", "1:3", "1:2-3", "1:2", "1:1"];
 const LABEL: Record<string, string> = {
@@ -291,6 +292,7 @@ export function Compare({ data, mode }: Props) {
   return (
     <>
       <PageHead eyebrow="Synthetic data" title="Real vs synthetic" lead="How faithful each synthetic dataset is, field by field and over time; whether models trained on it work on real babies; and whether it gives away anything about the real ones." />
+      <TermsBox ids={["fidelity", "ks", "tvd", "corr-gap", "detectability", "auc", "utility", "mia", "dcr", "exact-copies", "km", "median"]} />
       <div className="grid">
         <BabiesCompared data={data} mode={mode} />
         <Card n={`${bySet(data.counts, "baby_shifts", "baby-shifts")}; reference: ${cnt(data.counts?.holdout?.baby_shifts, "held-out")} vs ${cnt(data.counts?.train?.baby_shifts, "training baby-shifts")}`} title="Fidelity score" sub="100 minus the average distance over every field: 100 means identical distributions">

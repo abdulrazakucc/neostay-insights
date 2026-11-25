@@ -12,7 +12,9 @@ Hosted on GitHub Pages: https://abdulrazakucc.github.io/neostay-insights/
   synthetic** (stays and how long they lasted, care, admissions and census, nursing by skill tier, simulated
   nurse shifts), the synthetic-data and evaluation pages, and the models.
 - **How good are the predictions?**: every prediction scored in plain words beside the simple rule it must
-  beat, with its status (ready for a silent trial, not ready, measured but not yet gated).
+  beat, the model used and why, the models compared, its pass marks and its status (ready for a silent trial,
+  not ready, measured but not yet gated).
+- **Metrics explained**: every evaluation term in plain words and technical terms.
 - Centers 1–5 (synthetic scenarios): configuration, synthetic insights, longitudinal and operational
   analysis, staffing, **Counts**, validation.
 

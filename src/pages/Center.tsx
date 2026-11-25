@@ -3,6 +3,7 @@ import Chart from "../Chart";
 import { Card, cnt, Kpi, Legend, PageHead, Segmented, TableView } from "../ui";
 import { axis, base, num, PALETTE, pct } from "../theme";
 import type { Props } from "../App";
+import { TermsBox } from "./Metrics";
 import Stays from "./Stays";
 import { STAGE_COLORS } from "./Feeding";
 import { loadData } from "../vault";
@@ -450,6 +451,7 @@ export function Generation(props: CenterProps & { generatorsPage?: React.ReactNo
   return (
     <>
       <Head center={center} title="Generation configuration and reports" lead={HOSTED ? "How this center's large-scale synthetic dataset was generated, with its job record, dataset summary and the generator decision." : "Generate or resume this center's large-scale synthetic dataset in the background, follow its progress, and download the dataset with its reports and provenance."} />
+      {center.has_real_data && <TermsBox ids={["fidelity", "detectability", "coverage-gap", "mia", "near-dup", "ks", "tvd"]} />}
       <div className="grid">
         <Card title="Generation job" n={job?.target ? `target ${num(job.target, 0)} stays` : undefined} sub={`State: ${job?.state || "not started"}${job?.updated ? ` · updated ${job.updated}` : ""}`}>
           <div className="progress"><i style={{ width: `${Math.round(prog * 100)}%` }} /></div>
@@ -508,6 +510,7 @@ export function Evaluation({ mode, center }: CenterProps) {
   return (
     <>
       <Head center={center} title="Real vs synthetic: evidence" lead="Center 6 only. Generators were fitted and compared on the development period (before the 75-day holdout), over several seeds; the holdout is compared once and never used to choose or tune. No single similarity score is given: each family stands on its own." />
+      <TermsBox ids={["ci", "ks", "wasserstein", "jsd", "tvd", "mmd", "corr-gap", "detectability", "km", "dwell", "autocorr", "coverage-gap", "dcr", "near-dup", "mia", "attr-inf", "exact-copies", "holdout"]} />
       <div className="row" style={{ marginBottom: 14 }}>
         <Segmented value={gen} onChange={setGen} options={[{ key: "ml", label: "Hybrid (traditional ML)" }, { key: "dl", label: "Deep learning" }]} />
         <span className="badge good">Primary: {ev.decision.primary === "ml" ? "hybrid (traditional ML)" : "deep learning"}</span>

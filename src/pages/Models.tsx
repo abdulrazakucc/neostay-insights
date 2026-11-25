@@ -3,6 +3,7 @@ import Chart from "../Chart";
 import { Card, cnt, Kpi, Legend, PageHead, Segmented, TableView } from "../ui";
 import { axis, base, num, PALETTE, pct } from "../theme";
 import type { Props } from "../App";
+import { TermsBox } from "./Metrics";
 
 const FAMILY: Record<string, string> = { baseline: "Simple rule", statistical: "Statistical", machine_learning: "Machine learning", deep_learning: "Deep learning", ensemble: "Ensemble" };
 type Row = { name: string; family: string; what: string; cv: number; cv_se: number; test: number };
@@ -239,6 +240,8 @@ export default function Models({ data, mode, go }: Props) {
   return (
     <>
       <PageHead eyebrow="Models" title="Predictive models" lead="Four clinical questions, each answered by many kinds of model and compared on the same babies: simple curves, statistical models, machine learning and neural networks. Every score here is on babies the models did not learn from." />
+      <div className="note" style={{ marginTop: 0, marginBottom: 12 }}>This is the earlier study, kept for comparison. Decisions and the model used for each prediction are on <a href="#scorecard">How good are the predictions?</a>.</div>
+      <TermsBox ids={["ibs", "c-index", "typical-miss", "coverage", "km", "hazard", "calibration", "odds-ratio", "ci", "unseen"]} />
       <div className="row" style={{ marginBottom: 12 }}>
         <Segmented value={cur.key} onChange={setTask} options={avail.map((t) => ({ key: t.key, label: t.label }))} />
       </div>

@@ -3,6 +3,7 @@ import Chart from "../Chart";
 import { Card, cnt, Kpi, Legend, PageHead, Segmented, TableView } from "../ui";
 import { axis, base, num, PALETTE, pct } from "../theme";
 import type { Props } from "../App";
+import { TermsBox } from "./Metrics";
 
 /* Predictive modeling & evaluation (docs/NEOSTAY_PREDICTIVE_INTELLIGENCE.md §19). Every number comes from
    data/processed/ml/predictive/results.json (python -m acuity_predict.study): actual runs on the real Center 6
@@ -19,6 +20,19 @@ function Explain({ level, simple, technical }: { level: string; simple: React.Re
 }
 
 const sub = () => location.hash.slice(1).split("/")[1] || "overview";
+
+/* The terms each sub-page uses (metrics.ts), shown folded under its heading. */
+const PAGE_TERMS: Record<string, string[]> = {
+  overview: ["holdout", "unseen", "ibs", "km", "log-loss", "mae", "persistence", "lookup", "tcn"],
+  experiments: ["ibs", "ci", "c-index", "coverage", "log-loss", "accuracy", "unseen"],
+  architectures: ["hazard", "platt", "tcn", "lookup", "km"],
+  comparison: ["ibs", "km", "log-loss", "persistence", "lookup", "tcn", "mae", "c-index"],
+  journey: ["lookup", "persistence"],
+  calibration: ["calibration", "coverage", "brier", "accuracy", "slope"],
+  explain: ["shapley", "odds-ratio", "ablation", "ibs", "log-loss"],
+  errors: ["typical-miss", "bias", "tvd", "ibs", "c-index"],
+  registry: ["silent", "pass-mark", "status"],
+};
 
 export default function Predictive({ data, mode, center }: Props) {
   const p = PALETTE[mode];
@@ -37,7 +51,9 @@ export default function Predictive({ data, mode, center }: Props) {
   const head = (title: string, lead: string) => (
     <><PageHead eyebrow="Predictive modeling & evaluation" title={title} lead={lead} />{banner}
       <div className="row" style={{ marginBottom: 12 }}><Segmented value={level} onChange={setLevel} options={[{ key: "simple", label: "Simple explanation" }, { key: "technical", label: "Technical explanation" }]} />
-        <span className="badge">Test period: 2026-07-18 to 2026-09-30 (real, Center 6) · retrospective evaluation, not clinical validation</span></div></>);
+        <span className="badge">Test period: 2026-07-18 to 2026-09-30 (real, Center 6) · retrospective evaluation, not clinical validation</span></div>
+      <div className="note" style={{ marginTop: 0, marginBottom: 12 }}>This section shows the <b>75-day test</b>: one look at the last 75 days, with technical detail. Decisions about each model come from the six-month <b>monthly test</b> on <a href="#scorecard">How good are the predictions?</a>, which also names the model used for each prediction and why. Every term is defined on <a href="#metrics">Metrics explained</a>.</div>
+      <TermsBox ids={PAGE_TERMS[v] ?? []} /></>);
 
   // ---------------------------------------------------------------- A. Overview
   if (v === "overview") {
