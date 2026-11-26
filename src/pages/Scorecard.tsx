@@ -236,6 +236,36 @@ export function WhyNotBigger({ data }: { data: any }) {
   );
 }
 
+/* The plan for the predictions marked not ready (docs/PREDICTIVE_IMPROVEMENT_PLAN.md). */
+export function ImprovementPlan({ items }: { items: Item[] }) {
+  const nr = items.filter((i) => i.status === "not_ready");
+  if (!nr.length) return null;
+  const daily = items.find((i) => i.key === "leave_daily");
+  const slope = daily?.metrics.find((m) => m.metric === "slope")?.value;
+  const c14 = items.find((i) => i.key === "census_d14");
+  return (
+    <Card wide id="sc-plan" title="Plan for the predictions marked not ready" sub={`${nr.length} predictions: ${nr.map((i) => i.title.toLowerCase()).join("; ")}. Pass marks stay as they are; each step is judged by the same monthly test.`}>
+      <div className="sc-why">
+        <p><b>Remaining stay, updated every day.</b> Good at putting babies in order, but its stated chances are too extreme (calibration slope {slope != null ? slope.toFixed(2) : "—"}, pass mark 0.8–1.2). Why: the test's {daily?.n ?? "daily predictions"} rest on relatively few babies, because a long stay gives many near-identical daily predictions; and the recalibration uses only the last 30 training days.</p>
+        <ol className="sc-set">
+          <li><b>Recalibrate on more data</b>: all earlier months' out-of-sample predictions, per horizon (low effort).</li>
+          <li><b>Count each baby equally</b> in training, so long stays do not dominate (low).</li>
+          <li><b>Average the logistic and boosted models</b>; averaging shrinks extreme chances (low).</li>
+          <li><b>Tune for honest chances</b>: choose settings on a calibration-aware score, stronger regularisation, constraints where clinically certain (medium).</li>
+        </ol>
+        <p><b>Babies and nurses needed, 1–14 days ahead.</b> Nothing beats "same as today" by more than chance{c14 ? ` (at 14 days the forecast is ahead: ${show(c14.metrics[0].value, c14.metrics[0].fmt)} against ${show(c14.metrics[0].base, c14.metrics[0].fmt)}, not yet beyond chance)` : ""}. Tomorrow's unit is mostly today's babies; the unknowns are admissions and the timing of discharges.</p>
+        <ol className="sc-set">
+          <li><b>Forecast the change from today</b>, shrunk toward "same as today" by a weight chosen on the validation days, so it cannot do worse there (low).</li>
+          <li><b>Better discharge timing</b>: the recalibrated stay model and the board's discharge signals (discharge education noted, off tube feeds, room air) (medium).</li>
+          <li><b>Information the boards do not hold</b>: booked and expected admissions (maternal transfers, scheduled deliveries) and planned discharges from the hospital's systems; the largest expected gain (needs data access).</li>
+          <li><b>More weeks of data</b>: each month adds about 30 test days.</li>
+        </ol>
+        <p className="muted">Order: the low-effort steps first, then the monthly test again (about a week); the medium steps within a month; hospital data when it can be shared. The ready predictions go to a silent trial meanwhile. Details: docs/PREDICTIVE_IMPROVEMENT_PLAN.md in acuity-models.</p>
+      </div>
+    </Card>
+  );
+}
+
 export default function Scorecard({ data, mode }: Props) {
   const sc = data.scorecard;
   if (!sc?.items?.length) return <div className="empty">No prediction scores yet: run `make insights-data` in acuity-models.</div>;
@@ -282,6 +312,7 @@ export default function Scorecard({ data, mode }: Props) {
         </Card>
         <Terms wide title="Scores used on this page" ids={["main-score", "c-index", "typical-miss", "ibs", "skill", "coverage", "slope", "in-the-large", "ppv", "sensitivity", "accuracy", "log-loss", "honest-chances", "mae", "within-one", "bias", "baseline", "paired", "pass-mark", "silent", "feature-set", "tft", "tcn"]} />
         {items.map((it) => <ItemCard key={it.key} it={it} mode={mode} inputs={data.model_inputs} />)}
+        <ImprovementPlan items={items} />
         <WhyNotBigger data={data} />
         <ModelInputs inputs={data.model_inputs} />
       </div>

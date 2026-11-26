@@ -1,9 +1,11 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import Chart from "../Chart";
 import { Card, cnt, Kpi, Legend, PageHead, Segmented, TableView } from "../ui";
 import { axis, base, KEYS, NAMES, num, PALETTE, pct, tint, wd } from "../theme";
 import type { Props } from "../App";
 import { STAGE_COLORS } from "./Feeding";
+import { TermLink } from "./Metrics";
+import { compare, type Measure } from "../match";
 
 /* One line per baby: from the first board to the last, for babies born at a chosen gestational
    age and weight; the real babies beside the synthetic ones. A line can be coloured along the
@@ -25,6 +27,56 @@ function quantile(v: number[], q: number) {
   if (!v.length) return NaN;
   const s = [...v].sort((a, b) => a - b);
   return s[Math.min(s.length - 1, Math.max(0, Math.round(q * (s.length - 1))))];
+}
+
+const VERDICT: Record<Measure["verdict"], { word: string; cls: string }> = {
+  match: { word: "as close as real to real", cls: "good" }, close: { word: "close", cls: "info" },
+  different: { word: "different", cls: "bad" }, few: { word: "too few real babies", cls: "" } };
+
+/* The whole real and synthetic sets, and the chosen range, compared on the same measures before any chart. */
+function MatchPanel({ bs, gen, genName, gaFrom, gaTo, wFrom, wTo }: { bs: any; gen: string; genName: string; gaFrom: number; gaTo: number; wFrom: number; wTo: number }) {
+  const names = { modes: MODE_NAMES, stages: bs.stages as string[], ratios: bs.ratios as string[] };
+  const fmt = { days: (x: number) => (Number.isFinite(x) ? `${num(x, 1)} d` : "–"), ga: (x: number) => (Number.isFinite(x) ? wd(x / 7) : "–"),
+    g: (x: number) => (Number.isFinite(x) ? `${num(x, 0)} g` : "–") };
+  const R: Baby[] = bs.real ?? [], S: Baby[] = bs[gen] ?? [];
+  const inRange = (b: Baby) => b[0] >= gaFrom * 7 && b[0] < (gaTo + 1) * 7 && b[1] >= wFrom && b[1] < wTo;
+  const all = useMemo(() => compare(R, S, R, S, null, names, fmt), [bs, gen]);
+  const sel = useMemo(() => compare(R.filter(inRange), S.filter(inRange), R, S, inRange, names, fmt), [bs, gen, gaFrom, gaTo, wFrom, wTo]);
+  const head = (m: Measure[]) => { const ok = m.filter((x) => x.verdict !== "few"); return { match: ok.filter((x) => x.verdict === "match").length,
+    close: ok.filter((x) => x.verdict === "close").length, diff: ok.filter((x) => x.verdict === "different").length, n: ok.length, few: m.length - ok.length }; };
+  const ha = head(all), hs = head(sel);
+  const byKey = Object.fromEntries(all.map((m) => [m.key, m]));
+  const cell = (m?: Measure) => m ? (<>
+    <td><small>{m.real}</small></td><td><small>{m.synth}</small></td>
+    <td className="sc-val">{Number.isFinite(m.d) ? m.d.toFixed(3) : "–"}<small>chance up to {Number.isFinite(m.floor) ? m.floor.toFixed(3) : "–"}</small></td>
+    <td><span className={`badge ${VERDICT[m.verdict].cls}`}>{VERDICT[m.verdict].word}</span></td></>) : <td colSpan={4}><small>only for a chosen range</small></td>;
+  const range = `born ${gaFrom}–${gaTo}+6 wk, ${wFrom.toLocaleString()}–${(wTo - 1).toLocaleString()} g`;
+  return (
+    <Card wide id="stays-match" title="How closely the synthetic babies match the real ones"
+      sub={`${genName} against the real babies: every baby, and the range you chose (${range}). Each measure is set against how far apart two samples of real babies of the same sizes would be by chance.`}>
+      <div className="match-head">
+        <div className={ha.diff ? "warn" : "good"}><span>All babies</span><b>{ha.match} of {ha.n}</b><small>measures as close as two samples of real babies{ha.close ? `; ${ha.close} close` : ""}{ha.diff ? `; ${ha.diff} different` : ""}</small><em>{R.length} real · {S.length} synthetic stays</em></div>
+        <div className={hs.diff ? "warn" : "good"}><span>Your range</span><b>{hs.n ? `${hs.match} of ${hs.n}` : "–"}</b><small>{hs.n ? <>measures as close as two samples of real babies{hs.close ? `; ${hs.close} close` : ""}{hs.diff ? `; ${hs.diff} different` : ""}</> : "too few real babies to judge"}{hs.few ? ` (${hs.few} not judged: too few real babies)` : ""}</small>
+          <em>{R.filter(inRange).length} real · {S.filter(inRange).length} synthetic stays</em></div>
+      </div>
+      <div className="table-scroll">
+        <table className="sc-table match-table">
+          <thead>
+            <tr><th rowSpan={2}>Measure</th><th colSpan={4}>All babies</th><th colSpan={4}>Your range</th></tr>
+            <tr><th>Real</th><th>Synthetic</th><th>Distance</th><th>Verdict</th><th>Real</th><th>Synthetic</th><th>Distance</th><th>Verdict</th></tr>
+          </thead>
+          <tbody>{sel.map((m) => (
+            <tr key={m.key}><td><b>{m.label}</b><TermLink id={m.kind === "tvd" ? "tvd" : m.kind === "ks" ? "ks" : "chance-level"} /></td>
+              {cell(byKey[m.key])}{cell(m)}</tr>))}
+          </tbody>
+        </table>
+      </div>
+      <small className="muted">Distances run from 0 (identical) to 1. Numbers (age, weight, day of life, stay): Kolmogorov–Smirnov distance, the largest gap between the
+        "share below this value" curves. Care: total variation distance between the shares of boards in each category; the real and synthetic columns show the category with the largest gap. Chance level: the 95th percentile of the same distance
+        between two sets drawn at random from the real stays, of the same sizes as the real and synthetic sets (400 draws). Day of life counts stays that began in the data;
+        length of stay, stays that began and ended in it. A small range has few real babies, so its chance level is wide. <TermLink id="chance-level" text="What the chance level means" /></small>
+    </Card>
+  );
 }
 
 export default function Stays({ data, mode, embedded, source, synthLabel }: Props & { source?: any; synthLabel?: string }) {
@@ -179,6 +231,7 @@ export default function Stays({ data, mode, embedded, source, synthLabel }: Prop
           <Segmented value={sort} onChange={setSort} options={[{ key: "birth", label: "By weight in each group" }, { key: "length", label: "Longest first in each group" }]} />
         </div>
       </div>
+      {!noReal && <MatchPanel bs={bs} gen={gen} genName={synthLabel ?? NAMES[KEYS.indexOf(gen)]} gaFrom={gaFrom} gaTo={gaTo} wFrom={wFrom} wTo={wTo} />}
       <div className="kpis">
         <Kpi label="Real babies" value={noReal ? "–" : `${sr.n}`} sub={noReal ? "No real data available for this center" : `${sr.done} began and ended in the data`} accent={p.series[0]} />
         <Kpi label="Real: median stay" value={Number.isFinite(sr.median) ? `${num(sr.median, 1)} d` : "–"} sub={Number.isFinite(sr.q1) ? `middle half ${num(sr.q1, 1)}–${num(sr.q3, 1)} d` : "no completed stays"} accent={p.series[0]} />
