@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Background, Controls, Handle, MarkerType, Position, ReactFlow, ReactFlowProvider,
+import { Background, Handle, MarkerType, Position, ReactFlow, ReactFlowProvider, useReactFlow,
   type Connection, type ConnectionLineComponentProps, type Edge as FlowEdge, type Node as FlowNode, type NodeChange, type NodeProps, applyNodeChanges } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { Card, PageHead, Segmented } from "../ui";
@@ -29,8 +29,19 @@ const PRESETS: { q: string; ev: Evidence; t: string[] }[] = [
   { q: "In the first week of life with a central line: breathing and ratio?", ev: { dol: 0, line: 1 }, t: ["resp", "ratio"] },
 ];
 
+/* One soft colour per variable (OKLCH, two lightness tiers, chroma 0.105–0.11), chosen so that boxes linked or
+   side by side in the starting drawing differ clearly; checked with the data-visualisation validator for
+   lightness band and chroma in both themes. The name is always shown, so colour is never the only cue. */
+export const VAR_COLORS: Record<"light" | "dark", Record<string, string>> = {
+  light: { ga: "#376fa6", bw: "#a88fd6", dol: "#bc994c", cga: "#167f5c", wt: "#8d5489", resp: "#38b1bd", feed: "#975b23", line: "#d282a2",
+    spells: "#82ad6a", sepsis: "#a0514c", ratio: "#5a66a8", ratio_next: "#49accf", leave7: "#bc89c7" },
+  dark: { ga: "#3a75af", bw: "#a78dd7", dol: "#bc9744", cga: "#158561", wt: "#955890", resp: "#2ab0bd", feed: "#a06024", line: "#d27fa0",
+    spells: "#7fac65", sepsis: "#a85550", ratio: "#5f6bb1", ratio_next: "#40abd0", leave7: "#bb86c7" },
+};
+export const colorOf = (id: string, mode: "light" | "dark") => VAR_COLORS[mode][id] ?? PALETTE[mode].series[0];
+
 const STORE = (center: string, kind: string) => `insights-bn-${center}-${kind}`;
-const W = 250, H = 200;
+const W = 305, H = 275;
 const defaultNet = (ds: Dataset): Net => ({
   nodes: ds.variables.map((v) => v.id), edges: ds.default_edges.map((e) => [e[0], e[1]] as Edge),
   pos: Object.fromEntries(ds.variables.map((v) => [v.id, { x: (ds.layout[v.id]?.[0] ?? 0) * W + 40, y: (ds.layout[v.id]?.[1] ?? 0) * H + 20 }])) });
@@ -39,30 +50,33 @@ const sig = (n: Net) => JSON.stringify([n.nodes.slice().sort(), n.edges.map((e) 
 /* ------------------------------------------------------------------ a node on the canvas */
 function BnNode({ id, data, selected }: NodeProps<FlowNode<NodeData>>) {
   const { v, tab, post, prior, ev, target, learned, mode } = data;
-  const p = PALETTE[mode];
+  const c = colorOf(id, mode);
   const show = tab !== "design" && learned && post;
   return (
-    <div className={`bn-node${ev != null ? " ev" : ""}${target ? " target" : ""}${selected ? " sel" : ""}`} title={v.desc}>
+    <div className={`bn-node${ev != null ? " ev" : ""}${target ? " target" : ""}${selected ? " sel" : ""}`} title={v.desc}
+      style={{ "--c": c } as React.CSSProperties}>
       <Handle type="target" position={Position.Top} className="bn-handle" />
       <div className="bn-node-head">
         <b>{v.label}</b>
-        {tab === "reason" && <button className={`bn-star${target ? " on" : ""}`} onClick={(e) => { e.stopPropagation(); data.onTarget(id); }}
-          title={target ? "Stop reasoning about this" : "Reason about this variable"} aria-label="Reason about this variable">★</button>}
+        {tab === "reason" && ev != null && <span className="bn-role known">I know</span>}
+        {tab === "reason" && ev == null && (
+          <button className={`bn-role ask${target ? " on" : ""}`} onClick={(e) => { e.stopPropagation(); data.onTarget(id); }}
+            title={target ? "Stop asking about this" : "Ask: show how this variable's chances change"}>{target ? "✓ Asking" : "Ask"}</button>)}
       </div>
-      {!show && <div className="bn-node-states">{v.states.length} states · {v.states.slice(0, 3).join(", ")}{v.states.length > 3 ? "…" : ""}</div>}
+      {!show && <div className="bn-node-states">{v.states.join(" · ")}</div>}
       {show && (
         <div className="bn-bars">
-          {v.states.map((s, k) => {
+          {v.states.map((st, k) => {
             const val = post![k], pr = prior?.[k] ?? val, on = ev === k;
             return (
-              <button key={s} className={`bn-bar${on ? " on" : ""}`} disabled={tab !== "reason"}
-                onClick={(e) => { e.stopPropagation(); data.onPick(id, k); }} title={tab === "reason" ? (on ? "Click to remove this observation" : `Observe: ${v.label} = ${s}`) : s}>
-                <span className="bn-bar-label">{s}</span>
+              <button key={st} className={`bn-bar${on ? " on" : ""}`} disabled={tab !== "reason"}
+                onClick={(e) => { e.stopPropagation(); data.onPick(id, k); }} title={tab === "reason" ? (on ? "Click to forget this" : `I know: ${v.label} = ${st}`) : st}>
+                <span className="bn-bar-label">{st}</span>
                 <span className="bn-bar-track">
-                  <i style={{ width: `${pr * 100}%`, background: p.muted, opacity: 0.25 }} />
-                  <i style={{ width: `${val * 100}%`, background: on ? p.series[1] : p.series[0] }} />
+                  <i className="prior" style={{ width: `${pr * 100}%` }} />
+                  <i className="post" style={{ width: `${val * 100}%` }} />
                 </span>
-                <span className="bn-bar-val">{pct(val, val < 0.1 ? 1 : 0)}</span>
+                <span className="bn-bar-val">{pct(val, val < 0.1 && val > 0 ? 1 : 0)}</span>
               </button>
             );
           })}
@@ -100,6 +114,8 @@ function BayesInner({ mode, center }: Props & { center: any }) {
   const [sugs, setSugs] = useState<Suggestion[] | null>(null);
   const [busy, setBusy] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+  const flow = useReactFlow();
+  const fitFrame = useCallback(() => window.setTimeout(() => flow.fitView({ padding: 0.06, duration: 450 }), 80), [flow]);
   const cid = center?.center ?? "center-6";
 
   useEffect(() => { if (!kinds.includes(kind)) setKind(kinds[0]); }, [cid]);
@@ -129,6 +145,8 @@ function BayesInner({ mode, center }: Props & { center: any }) {
     if (note) setMsg(note);
   }, [cid, kind]);
   const stale = !!model && !!net && sig(net) !== modelSig;
+  // Boxes grow when they show chances: fit the whole network into the frame whenever that changes.
+  useEffect(() => { if (net && ds) fitFrame(); }, [tab, modelSig, net?.nodes.length, ds, fitFrame]);
   const learned = !!model && !stale;
 
   // ---------------------------------------------------------------- reasoning results
@@ -273,6 +291,7 @@ function BayesInner({ mode, center }: Props & { center: any }) {
       {stale && <div className="note warn-note">The network has changed since the probabilities were learned. <button className="link" onClick={doLearn}>Learn again</button> to update every chance.</div>}
 
       <div className="bn-layout">
+        <div className="bn-main">
         <div className="bn-canvas-card">
           <div className="bn-toolbar">
             {tab === "design" && <>
@@ -284,19 +303,25 @@ function BayesInner({ mode, center }: Props & { center: any }) {
               <button className="btn" onClick={doLearn} disabled={busy}>{busy ? "Working…" : learned ? "Learn again" : "Confirm structure and learn →"}</button>
             </>}
             {tab !== "design" && <>
-              <span className="bn-hint">{tab === "reason" ? "Click a bar inside a box to say you know that value (click again to remove). Click ★ to reason about a variable." : "Each box shows the chance of each value across all babies. Arrow colour and width: how strongly the data support it."}</span>
+              <span className="bn-hint">{tab === "reason" ? "Click a value inside a box = \"I know this\" (it turns solid). Click Ask on a box = show how its chances change. Or use the panel on the right." : "Each box shows the chance of each value across all babies. Arrow colour and width: how strongly the data support it."}</span>
               <span className="grow" />
               {tab === "reason" && Object.keys(evidence).length > 0 && <button className="btn ghost" onClick={() => setEvidence({})}>Clear what you know</button>}
             </>}
+          </div>
+          <div className="bn-zoom" role="group" aria-label="Zoom">
+            <button className="btn" onClick={fitFrame} title="Show the whole network in the frame">⤢ Fit to frame</button>
+            <button className="btn ghost" onClick={() => flow.zoomIn({ duration: 200 })} aria-label="Zoom in" title="Zoom in">＋</button>
+            <button className="btn ghost" onClick={() => flow.zoomOut({ duration: 200 })} aria-label="Zoom out" title="Zoom out">－</button>
+            <span>Scrolling moves the page, not the drawing. Zoom with these buttons (or pinch); drag empty space to move the drawing.</span>
           </div>
           <div className="bn-canvas">
             <ReactFlow nodes={rfNodes} edges={flowEdges} nodeTypes={nodeTypes} onNodesChange={onNodesChange} onConnect={tab === "design" ? onConnect : undefined}
               nodesConnectable={tab === "design"} edgesFocusable elementsSelectable
               onEdgeClick={(_, e) => setSelEdge(e.id)} onPaneClick={() => setSelEdge(null)}
               onEdgesDelete={(es) => tab === "design" && es.forEach((e) => removeEdge(e.id))} deleteKeyCode={tab === "design" ? ["Backspace", "Delete"] : null}
-              connectionLineComponent={DragLine} connectionRadius={70} connectOnClick colorMode={mode} fitView fitViewOptions={{ padding: 0.12 }} minZoom={0.2} maxZoom={1.6} proOptions={{ hideAttribution: true }}>
+              connectionLineComponent={DragLine} connectionRadius={70} connectOnClick colorMode={mode} fitView fitViewOptions={{ padding: 0.06 }} minZoom={0.15} maxZoom={2}
+              zoomOnScroll={false} preventScrolling={false} zoomOnDoubleClick={false} panOnScroll={false} proOptions={{ hideAttribution: true }}>
               <Background gap={22} size={1} color={p.grid} />
-              <Controls showInteractive={false} />
             </ReactFlow>
             {se && (
               <div className="bn-edge-pop">
@@ -311,6 +336,8 @@ function BayesInner({ mode, center }: Props & { center: any }) {
           </div>
         </div>
 
+        {tab === "reason" && learned && <Answers ds={ds} dec={dec} model={model!} evidence={evidence} targets={targets.filter((t) => model!.nodes.includes(t))} prior={prior} post={post} label={label} realSet={realSet} mode={mode} />}
+        </div>
         <aside className="bn-side">
           {tab === "design" && <>
             <Card title="Variables" sub="Tick to include; hover for its meaning">
@@ -366,11 +393,31 @@ function BayesInner({ mode, center }: Props & { center: any }) {
           </>}
 
           {tab === "reason" && learned && <>
-            <Card title="What you know about the baby" sub="Click a bar inside a box on the drawing, or pick a ready-made question">
-              {Object.keys(evidence).length === 0 ? <div className="note">Nothing yet: the boxes show the chances for all babies.</div> :
-                <div className="bn-chips">{Object.entries(evidence).map(([k, s]) => (
-                  <button key={k} className="bn-chip" onClick={() => pick(k, s)} title="Remove">{label(k)} = <b>{V[k].states[s]}</b> ✕</button>))}
-                </div>}
+            <Card title="① What you know (evidence)" sub="Set the facts you know about a baby: click a value below, or a bar inside a box on the drawing. Click it again to forget it."
+              right={Object.keys(evidence).length > 0 ? <button className="link" onClick={() => setEvidence({})}>Clear all</button> : undefined}>
+              <div className="bn-evlist">{net.nodes.map((id) => {
+                const v = V[id], on = evidence[id];
+                return (
+                  <details key={id} className={`bn-ev${on != null ? " set" : ""}`} open={on != null || undefined} style={{ "--c": colorOf(id, mode) } as React.CSSProperties}>
+                    <summary><i />{v.label}<em>{on != null ? v.states[on] : "not known"}</em></summary>
+                    <div className="bn-ev-states">{v.states.map((st, k) => (
+                      <button key={st} className={on === k ? "on" : ""} onClick={() => pick(id, k)}>{st}</button>))}
+                    </div>
+                  </details>);
+              })}</div>
+            </Card>
+            <Card title="② What you want to know" sub="Pick the variables whose chances you want to see. Their answers appear below the drawing."
+              right={targets.length > 0 ? <button className="link" onClick={() => setTargets([])}>Clear</button> : undefined}>
+              <div className="bn-targets">{net.nodes.map((id) => {
+                const known = evidence[id] != null, on = targets.includes(id);
+                return (
+                  <button key={id} className={`${on ? "on" : ""}`} disabled={known} onClick={() => toggleTarget(id)} style={{ "--c": colorOf(id, mode) } as React.CSSProperties}
+                    title={known ? "You have set this as known" : on ? "Stop asking" : "Ask about this"}>
+                    <i />{V[id].label}{known ? <small> known</small> : on ? <small> ✓</small> : null}
+                  </button>);
+              })}</div>
+            </Card>
+            <Card title="Ready-made questions" sub="Each sets what you know and what you want to know">
               <div className="bn-presets">{presets.map((x) => (
                 <button key={x.q} className="bn-preset" onClick={() => { setEvidence(x.ev); setTargets(x.t.filter((k) => net.nodes.includes(k))); }}>{x.q}</button>))}
               </div>
@@ -380,7 +427,6 @@ function BayesInner({ mode, center }: Props & { center: any }) {
       </div>
 
       {tab === "learn" && learned && <CptView ds={ds} model={model!} node={model!.nodes.includes(cptNode) ? cptNode : model!.nodes[0]} label={label} mode={mode} />}
-      {tab === "reason" && learned && <Answers ds={ds} dec={dec} model={model!} evidence={evidence} targets={targets.filter((t) => model!.nodes.includes(t))} prior={prior} post={post} label={label} realSet={realSet} />}
 
       <TermsBox ids={["bayes-net", "arrow", "cpt", "prior-posterior", "evidence", "bdeu", "bic", "bic-scale", "available-case", "inference", "baby-shift-unit"]} />
       <div className="note">Planning support, not for decisions about one baby. Every chance counts baby-shifts (one baby on one board), so babies with long stays weigh more; the network shows how things go together in the {realSet ? "unit's boards" : "simulated unit"}, not proof of cause.</div>
@@ -423,10 +469,10 @@ function CptView({ ds, model, node, label, mode }: { ds: Dataset; model: Model; 
 }
 
 /* ------------------------------------------------------------------ the answers */
-function Answers({ ds, dec, model, evidence, targets, prior, post, label, realSet }: { ds: Dataset; dec: Decoded; model: Model; evidence: Evidence; targets: string[];
-  prior: Record<string, Float64Array>; post: Record<string, Float64Array>; label: (s: string) => string; realSet: boolean }) {
+function Answers({ ds, dec, model, evidence, targets, prior, post, label, realSet, mode }: { ds: Dataset; dec: Decoded; model: Model; evidence: Evidence; targets: string[];
+  prior: Record<string, Float64Array>; post: Record<string, Float64Array>; label: (s: string) => string; realSet: boolean; mode: "light" | "dark" }) {
   const hasEv = Object.keys(evidence).length > 0;
-  if (!targets.length) return <Card wide title="Your answers"><div className="note">Click ★ on any box to reason about it.</div></Card>;
+  if (!targets.length) return <Card wide title="Your answers"><div className="note">Choose at least one variable under <b>② What you want to know</b> (or click <b>Ask</b> on a box).</div></Card>;
   const evText = Object.entries(evidence).map(([k, s]) => `${label(k)} = ${ds.variables.find((v) => v.id === k)!.states[s]}`).join("; ");
   return (
     <div className="grid">
@@ -440,6 +486,7 @@ function Answers({ ds, dec, model, evidence, targets, prior, post, label, realSe
         const inf = hasEv ? influence(model, ds, t, evidence, big.k) : [];
         return (
           <Card key={t} title={label(t)} sub={hasEv ? `Given: ${evText}` : "For all babies (nothing known yet)"}>
+            <div style={{ "--c": colorOf(t, mode) } as React.CSSProperties}>
             <div className="bn-answer">
               {v.states.map((s, k) => (
                 <div key={s} className={`bn-ans-row${k === top ? " top" : ""}`}>
@@ -450,6 +497,7 @@ function Answers({ ds, dec, model, evidence, targets, prior, post, label, realSe
                 </div>))}
             </div>
             <div className="bn-legend"><span><i className="before" />all babies</span>{hasEv && <span><i className="after" />given what you know</span>}</div>
+            </div>
             <p className="bn-say">
               {hasEv
                 ? <>Most likely: <b>{v.states[top]}</b> ({pct(b[top], 0)}). The biggest change is <b>{big.s}</b>: from {pct(a[big.k], 1)} for all babies to {pct(b[big.k], 1)}
