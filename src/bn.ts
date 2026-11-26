@@ -7,18 +7,29 @@
    sample size ESS spread evenly over the table, so no probability is exactly 0 or 1.
    Scoring: log-likelihood and BIC with the maximum-likelihood estimates; the strength of an arrow is how much
    the BIC of its child gets worse when the arrow is removed.
-   Reasoning: exact inference by variable elimination (no sampling), so every answer is reproducible. */
+   Reasoning: exact inference by variable elimination (no sampling), so every answer is reproducible.
+   Also: per-baby counting (each stay weighs 1, from the file's weights), 95% plausible ranges (Dirichlet
+   posterior draws of every table, each answered exactly), how much of an answer rests on parent combinations
+   never seen in the data, the most likely full picture (max-product variable elimination with backtracking),
+   and a test on held-out rows (accuracy, log loss, Brier score, AUC against simple baselines). */
 
 export type Variable = { id: string; label: string; states: string[]; desc: string; source: string; missing: number };
-export type Dataset = { kind: string; center: string; center_name: string; generated: string; unit: string; n: number; stays: number;
-  variables: Variable[]; default_edges: [string, string][]; layout: Record<string, [number, number]>; tiers?: Record<string, number>; patterns: string[]; counts: number[] };
+export type Preset = { role: "doctor" | "manager"; q: string; ev: Record<string, string>; t: string[] };
+export type TeamNet = { nodes: string[]; edges: [string, string][]; pos?: Record<string, { x: number; y: number }>; note?: string; agreed?: string };
+export type Dataset = { network?: "baby" | "unit"; kind: string; center: string; center_name: string; generated: string; unit: string; n: number; stays: number;
+  variables: Variable[]; default_edges: [string, string][]; default_nodes?: string[]; layout: Record<string, [number, number]>; tiers?: Record<string, number>;
+  presets?: Preset[]; team?: TeamNet | null; test?: { days: number; first_date: string; dev_n: number; test_n: number; dev_stays?: number; test_stays?: number } | null;
+  test_targets?: string[]; persist?: Record<string, string>;
+  patterns: string[]; counts: number[]; weights?: number[]; counts_dev?: number[]; counts_test?: number[] };
 export type Edge = [string, string];
-export type Cpt = { node: string; parents: string[]; probs: Float64Array; counts: Float64Array; rowN: Float64Array; used: number };
+export type Cpt = { node: string; parents: string[]; probs: Float64Array; counts: Float64Array; rowN: Float64Array; used: number; alpha: number };
 export type Model = { nodes: string[]; edges: Edge[]; cpts: Record<string, Cpt>; ess: number; bic: number; logLik: number;
   nodeBic: Record<string, number>; edgeStrength: Record<string, number>; learnedAt: string };
 export type Evidence = Record<string, number>;
 
 const DIG = "0123456789abcdefghijklmnopqrstuvwxyz";
+
+export type CountBy = "counts" | "weights" | "counts_dev" | "counts_test";
 
 /* Decode the patterns once: a row-major Int8Array (-1 = unknown) and the counts. */
 export function decode(ds: Dataset) {
@@ -31,6 +42,14 @@ export function decode(ds: Dataset) {
   return { rows, counts: Float64Array.from(ds.counts), V, P, index: Object.fromEntries(ds.variables.map((v, i) => [v.id, i])) as Record<string, number> };
 }
 export type Decoded = ReturnType<typeof decode>;
+
+/* The same decoded rows with another count per pattern: each baby-shift (counts), each baby equally (weights:
+   1 / the stay's baby-shifts), or the development / test part of the holdout split. */
+export function withCounts(d: Decoded, ds: Dataset, by: CountBy): Decoded {
+  const arr = ds[by];
+  if (by === "counts" || !arr) return d;
+  return { ...d, counts: Float64Array.from(arr) };
+}
 
 export const parentsOf = (node: string, edges: Edge[]) => edges.filter((e) => e[1] === node).map((e) => e[0]);
 
@@ -100,7 +119,7 @@ export function learn(ds: Dataset, d: Decoded, nodes: string[], edges: Edge[], e
       rowN[j] = nj;
       for (let k = 0; k < r; k++) probs[j * r + k] = (counts[j * r + k] + a) / (nj + a * r);
     }
-    cpts[node] = { node, parents, probs, counts, rowN, used };
+    cpts[node] = { node, parents, probs, counts, rowN, used, alpha: a };
     const sc = scoreOf(counts, q, r, used);
     nodeBic[node] = sc.bic; bic += sc.bic; logLik += sc.ll;
     for (const p of parents) {
@@ -197,14 +216,45 @@ function sumOut(f: Factor, v: number): Factor {
   return { vars, card, vals: out };
 }
 
-/* P(target | evidence) by variable elimination with a greedy smallest-factor order. */
-export function query(m: Model, ds: Dataset, target: string, evidence: Evidence): Float64Array {
-  const idx: Record<string, number> = Object.fromEntries(ds.variables.map((v, i) => [v.id, i]));
-  const ev = new Map<number, number>(Object.entries(evidence).filter(([k]) => m.nodes.includes(k)).map(([k, s]) => [idx[k], s]));
-  const t = idx[target];
-  if (ev.has(t)) { const r = new Float64Array(ds.variables[t].states.length); r[ev.get(t)!] = 1; return r; }
-  let factors = m.nodes.map((n) => reduce(cptFactor(m, ds, idx, n), ev));
-  const elim = new Set(m.nodes.map((n) => idx[n]).filter((v) => v !== t && !ev.has(v)));
+function maxOut(f: Factor, v: number): { f: Factor; arg: Int32Array } {
+  const i = f.vars.indexOf(v);
+  const vars = f.vars.filter((_, k) => k !== i), card = f.card.filter((_, k) => k !== i);
+  const st = strides(f.card), nst = strides(card);
+  const out = new Float64Array(card.reduce((a, b) => a * b, 1)).fill(-1), arg = new Int32Array(out.length);
+  for (let o = 0; o < f.vals.length; o++) {
+    let rem = o, off = 0, kk = 0, sv = 0;
+    for (let k = 0; k < f.vars.length; k++) {
+      const s = Math.floor(rem / st[k]); rem -= s * st[k];
+      if (k !== i) { off += s * nst[kk]; kk++; } else sv = s;
+    }
+    if (f.vals[o] > out[off]) { out[off] = f.vals[o]; arg[off] = sv; }
+  }
+  return { f: { vars, card, vals: out }, arg };
+}
+
+const indexOfVars = (ds: Dataset): Record<string, number> => Object.fromEntries(ds.variables.map((v, i) => [v.id, i]));
+
+/* The variables an answer about `keep` given the evidence can depend on: those and their ancestors. Every other
+   variable's table sums to 1 when it is summed out, so it is left out (this changes nothing in the answer). */
+function relevant(m: Model, keep: string[], evidence: Evidence): string[] {
+  const need = new Set<string>(), stack = [...keep, ...Object.keys(evidence).filter((k) => m.nodes.includes(k))];
+  while (stack.length) {
+    const x = stack.pop()!;
+    if (need.has(x)) continue;
+    need.add(x);
+    for (const p of m.cpts[x]?.parents ?? []) stack.push(p);
+  }
+  return m.nodes.filter((n) => need.has(n));
+}
+
+function evidenceMap(m: Model, idx: Record<string, number>, evidence: Evidence) {
+  return new Map<number, number>(Object.entries(evidence).filter(([k]) => m.nodes.includes(k)).map(([k, s]) => [idx[k], s]));
+}
+
+/* Variable elimination with a greedy smallest-factor order. mode "sum" marginalises; "max" maximises and keeps,
+   per eliminated variable, its best value for every setting of the variables it was combined with. */
+function eliminate(factors: Factor[], elim: Set<number>, ds: Dataset, mode: "sum" | "max") {
+  const trace: { v: number; vars: number[]; card: number[]; arg: Int32Array }[] = [];
   while (elim.size) {
     let best = -1, bestSize = Infinity;
     for (const v of elim) {
@@ -214,21 +264,225 @@ export function query(m: Model, ds: Dataset, target: string, evidence: Evidence)
       if (size < bestSize) { bestSize = size; best = v; }
     }
     const touch = factors.filter((f) => f.vars.includes(best)), rest = factors.filter((f) => !f.vars.includes(best));
+    elim.delete(best);
+    if (!touch.length) continue;
     let prod = touch[0];
     for (let k = 1; k < touch.length; k++) prod = multiply(prod, touch[k]);
-    factors = [...rest, sumOut(prod, best)];
-    elim.delete(best);
+    if (mode === "sum") factors = [...rest, sumOut(prod, best)];
+    else { const r = maxOut(prod, best); trace.push({ v: best, vars: r.f.vars, card: r.f.card, arg: r.arg }); factors = [...rest, r.f]; }
   }
-  let res = factors[0];
-  for (let k = 1; k < factors.length; k++) res = multiply(res, factors[k]);
-  // Only the target remains (factors without variables are constants).
-  const r = ds.variables[t].states.length, out = new Float64Array(r);
-  if (res.vars.length === 0) { out.fill(1 / r); return out; }
-  const ti = res.vars.indexOf(t), st = strides(res.card);
-  for (let o = 0; o < res.vals.length; o++) out[Math.floor(o / st[ti]) % r] += res.vals[o];
+  let res: Factor = { vars: [], card: [], vals: Float64Array.of(1) };
+  for (const f of factors) res = multiply(res, f);
+  return { res, trace };
+}
+
+/* P(keep | evidence) as one table over the variables in `keep` that are not evidence (normalised). */
+export function posterior(m: Model, ds: Dataset, keep: string[], evidence: Evidence): Factor & { pe: number } {
+  const idx = indexOfVars(ds);
+  const ev = evidenceMap(m, idx, evidence);
+  const nodes = relevant(m, keep, evidence);
+  const factors = nodes.map((n) => reduce(cptFactor(m, ds, idx, n), ev));
+  const keepIds = new Set(keep.map((k) => idx[k]).filter((v) => !ev.has(v)));
+  const { res } = eliminate(factors, new Set(nodes.map((n) => idx[n]).filter((v) => !keepIds.has(v) && !ev.has(v))), ds, "sum");
+  // Reorder to the order of `keep` (variables missing from the result, e.g. not in the network, are uniform).
+  const vars = [...keepIds], card = vars.map((v) => ds.variables[v].states.length), nst = strides(card);
+  const out = new Float64Array(card.reduce((a, b) => a * b, 1));
+  const st = strides(res.card);
+  for (let o = 0; o < out.length; o++) {
+    let rem = o, off = 0;
+    for (let k = 0; k < vars.length; k++) {
+      const s = Math.floor(rem / nst[k]); rem -= s * nst[k];
+      const j = res.vars.indexOf(vars[k]);
+      if (j >= 0) off += s * st[j];
+    }
+    out[o] = res.vals[off];
+  }
   const z = out.reduce((a, b) => a + b, 0);
-  for (let k = 0; k < r; k++) out[k] = z > 0 ? out[k] / z : 1 / r;
-  return out;
+  for (let o = 0; o < out.length; o++) out[o] = z > 0 ? out[o] / z : 1 / out.length;
+  return { vars, card, vals: out, pe: z };
+}
+
+/* P(target | evidence) by variable elimination with a greedy smallest-factor order. */
+export function query(m: Model, ds: Dataset, target: string, evidence: Evidence): Float64Array {
+  const idx = indexOfVars(ds), t = idx[target], r = ds.variables[t].states.length;
+  if (target in evidence && m.nodes.includes(target)) { const o = new Float64Array(r); o[evidence[target]] = 1; return o; }
+  if (!m.nodes.includes(target)) return new Float64Array(r).fill(1 / r);
+  return Float64Array.from(posterior(m, ds, [target], evidence).vals);
+}
+
+/* The most likely full picture: the single combination of every unknown variable in the network with the
+   highest probability given the evidence (max-product variable elimination, then backtracking), and that
+   probability. Ties go to the first state. */
+export function mostLikely(m: Model, ds: Dataset, evidence: Evidence): { assign: Record<string, number>; prob: number } {
+  const idx = indexOfVars(ds);
+  const ev = evidenceMap(m, idx, evidence);
+  const factors = m.nodes.map((n) => reduce(cptFactor(m, ds, idx, n), ev));
+  const free = m.nodes.map((n) => idx[n]).filter((v) => !ev.has(v));
+  const { res, trace } = eliminate(factors, new Set(free), ds, "max");
+  const best = res.vals[0];
+  const val = new Map<number, number>();
+  for (let k = trace.length - 1; k >= 0; k--) {
+    const t = trace[k], st = strides(t.card);
+    let off = 0;
+    t.vars.forEach((v, i) => { off += (val.get(v) ?? 0) * st[i]; });
+    val.set(t.v, t.arg[off]);
+  }
+  const pe = probabilityOf(m, ds, evidence);
+  const assign: Record<string, number> = {};
+  for (const v of free) assign[ds.variables[v].id] = val.get(v) ?? 0;
+  return { assign, prob: pe > 0 ? best / pe : 0 };
+}
+
+/* P(evidence) under the network (1 with no evidence). */
+export function probabilityOf(m: Model, ds: Dataset, evidence: Evidence): number {
+  const idx = indexOfVars(ds);
+  const ev = evidenceMap(m, idx, evidence);
+  const nodes = relevant(m, [], evidence);
+  const factors = nodes.map((n) => reduce(cptFactor(m, ds, idx, n), ev));
+  return eliminate(factors, new Set(nodes.map((n) => idx[n]).filter((v) => !ev.has(v))), ds, "sum").res.vals[0];
+}
+
+/* How much of an answer rests on table rows with no data (or fewer than `thin` cases): for every variable the
+   answer depends on, the chance, given the evidence, that its parents are in such a combination. Those rows hold
+   the prior's equal chances (no data) or few cases. Returns the variables with any such share, largest first. */
+export function gaps(m: Model, ds: Dataset, targets: string[], evidence: Evidence, thin = 20) {
+  const idx = indexOfVars(ds);
+  const out: { node: string; unseen: number; few: number }[] = [];
+  for (const node of relevant(m, targets, evidence)) {
+    const c = m.cpts[node];
+    if (!c.parents.length) continue;
+    const pr = c.parents.map((p) => ds.variables[idx[p]].states.length);
+    const free = c.parents.filter((p) => !(p in evidence));
+    const post = free.length ? posterior(m, ds, free, evidence) : { vars: [] as number[], card: [] as number[], vals: Float64Array.of(1) };
+    const nst = strides(post.card);
+    let unseen = 0, few = 0;
+    for (let o = 0; o < post.vals.length; o++) {
+      if (!post.vals[o]) continue;
+      const val: Record<string, number> = {};
+      let rem = o;
+      post.vars.forEach((v, k) => { const s = Math.floor(rem / nst[k]); rem -= s * nst[k]; val[ds.variables[v].id] = s; });
+      let j = 0;
+      c.parents.forEach((p, k) => { j = j * pr[k] + (p in evidence ? evidence[p] : val[p]); });
+      if (c.rowN[j] === 0) unseen += post.vals[o];
+      if (c.rowN[j] < thin) few += post.vals[o];
+    }
+    if (few > 0.0005) out.push({ node, unseen, few });
+  }
+  return out.sort((a, b) => b.unseen - a.unseen || b.few - a.few);
+}
+
+/* ---------------------------------------------------------------- 95% plausible ranges */
+/* A seeded random number generator (mulberry32), so the ranges are the same every time. */
+function rng(seed: number) {
+  let a = seed >>> 0;
+  return () => { a = (a + 0x6d2b79f5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+}
+function normal(u: () => number) {
+  let x = 0;
+  while (!x) x = u();
+  return Math.sqrt(-2 * Math.log(x)) * Math.cos(2 * Math.PI * u());
+}
+/* Gamma(shape, 1) by Marsaglia and Tsang (2000); shapes below 1 use the boost Gamma(a+1)·U^(1/a). */
+function gamma(a: number, u: () => number): number {
+  if (a < 1) { const g = gamma(a + 1, u); let x = 0; while (!x) x = u(); return g * Math.pow(x, 1 / a); }
+  const d = a - 1 / 3, c = 1 / Math.sqrt(9 * d);
+  for (;;) {
+    let x: number, v: number;
+    do { x = normal(u); v = 1 + c * x; } while (v <= 0);
+    v = v * v * v;
+    const w = u();
+    if (w < 1 - 0.0331 * x * x * x * x || Math.log(w) < 0.5 * x * x + d * (1 - v + Math.log(v))) return d * v;
+  }
+}
+
+/* One draw of every table from its posterior Dirichlet(counts + prior). */
+function drawModel(m: Model, u: () => number, only: string[]): Model {
+  const cpts: Record<string, Cpt> = { ...m.cpts };
+  for (const n of only) {
+    const c = m.cpts[n], r = c.probs.length / c.rowN.length, probs = new Float64Array(c.probs.length);
+    for (let j = 0; j < c.rowN.length; j++) {
+      let z = 0;
+      for (let k = 0; k < r; k++) { const g = gamma(c.counts[j * r + k] + c.alpha, u); probs[j * r + k] = g; z += g; }
+      for (let k = 0; k < r; k++) probs[j * r + k] = z > 0 ? probs[j * r + k] / z : 1 / r;
+    }
+    cpts[n] = { ...c, probs };
+  }
+  return { ...m, cpts };
+}
+
+/* 95% plausible range of every chance of each target: the 2.5th and 97.5th percentiles over `draws` networks
+   whose tables are drawn from their posteriors; each draw is answered exactly. The ranges show how much the
+   chances could move with other data of the same size; they assume the counted units are independent. */
+export function ranges(m: Model, ds: Dataset, targets: string[], evidence: Evidence, draws = 200, seed = 1) {
+  const u = rng(seed), need = relevant(m, targets, evidence);
+  const vals: Record<string, number[][]> = Object.fromEntries(targets.map((t) => [t, ds.variables[indexOfVars(ds)[t]].states.map(() => [] as number[])]));
+  for (let s = 0; s < draws; s++) {
+    const dm = drawModel(m, u, need);
+    for (const t of targets) query(dm, ds, t, evidence).forEach((p, k) => vals[t][k].push(p));
+  }
+  const pct = (a: number[], q: number) => { const b = a.slice().sort((x, y) => x - y); const i = (b.length - 1) * q, lo = Math.floor(i); return b[lo] + (b[Math.min(lo + 1, b.length - 1)] - b[lo]) * (i - lo); };
+  return Object.fromEntries(targets.map((t) => [t, { lo: vals[t].map((a) => pct(a, 0.025)), hi: vals[t].map((a) => pct(a, 0.975)) }]));
+}
+
+/* ---------------------------------------------------------------- test on held-out rows */
+export type TestResult = { n: number; rows: number; accuracy: number; logLoss: number; brier: number; auc: number | null;
+  base: { accuracy: number; logLoss: number; brier: number; auc: number | null }; persist: { accuracy: number } | null };
+
+/* Weighted AUC: the chance that a random positive scores above a random negative (ties count half). */
+export function auc(scores: number[], pos: boolean[], w: number[]): number | null {
+  const ord = scores.map((_, i) => i).sort((a, b) => scores[a] - scores[b]);
+  let P = 0, N = 0;
+  for (let i = 0; i < pos.length; i++) { if (pos[i]) P += w[i]; else N += w[i]; }
+  if (!P || !N) return null;
+  let below = 0, sum = 0;
+  for (let i = 0; i < ord.length;) {
+    let j = i, p = 0, n = 0;
+    while (j < ord.length && scores[ord[j]] === scores[ord[i]]) { if (pos[ord[j]]) p += w[ord[j]]; else n += w[ord[j]]; j++; }
+    sum += p * (below + n / 2);
+    below += n;
+    i = j;
+  }
+  return sum / (P * N);
+}
+
+/* Score the network's chances for `target` on the test rows (counts_test). The evidence for each row is what
+   was known at the time: the variables in the network with an earlier time tier than the target, where
+   recorded. Baselines: the development rows' shares of the target (base rate), and, where the data file names
+   one, "the same as now" (e.g. tomorrow's ratio = today's ratio). Binary targets also get the AUC for state 1. */
+export function evaluate(m: Model, ds: Dataset, dTest: Decoded, target: string, base: ArrayLike<number>): TestResult {
+  const idx = indexOfVars(ds), ti = idx[target], r = ds.variables[ti].states.length, tiers = ds.tiers ?? {};
+  const evVars = m.nodes.filter((n) => n !== target && (tiers[n] ?? 0) < (tiers[target] ?? 0)).map((n) => idx[n]);
+  const nowVar = ds.persist?.[target] != null ? idx[ds.persist[target]] : -1;
+  const cache = new Map<string, Float64Array>();
+  let n = 0, rows = 0, acc = 0, ll = 0, br = 0, bAcc = 0, bLl = 0, bBr = 0, pAcc = 0, pN = 0;
+  const bArg = Array.from(base).indexOf(Math.max(...Array.from(base)));
+  const sc: number[] = [], bs: number[] = [], ps: boolean[] = [], ws: number[] = [];
+  for (let p = 0; p < dTest.P; p++) {
+    const w = dTest.counts[p];
+    if (!w) continue;
+    const off = p * dTest.V, y = dTest.rows[off + ti];
+    if (y < 0) continue;
+    const ev: Evidence = {};
+    let key = "";
+    for (const v of evVars) { const s = dTest.rows[off + v]; if (s >= 0) { ev[ds.variables[v].id] = s; key += `${v}:${s},`; } }
+    let pr = cache.get(key);
+    if (!pr) { pr = query(m, ds, target, ev); cache.set(key, pr); }
+    let arg = 0;
+    for (let k = 1; k < r; k++) if (pr[k] > pr[arg]) arg = k;
+    n += w; rows++;
+    acc += w * (arg === y ? 1 : 0);
+    ll += -w * Math.log(Math.max(pr[y], 1e-15));
+    bAcc += w * (bArg === y ? 1 : 0);
+    bLl += -w * Math.log(Math.max(base[y], 1e-15));
+    let b1 = 0, b2 = 0;
+    for (let k = 0; k < r; k++) { b1 += (pr[k] - (k === y ? 1 : 0)) ** 2; b2 += (base[k] - (k === y ? 1 : 0)) ** 2; }
+    br += w * b1; bBr += w * b2;
+    if (nowVar >= 0) { const now = dTest.rows[off + nowVar]; if (now >= 0) { pAcc += w * (now === y ? 1 : 0); pN += w; } }
+    if (r === 2) { sc.push(pr[1]); bs.push(base[1]); ps.push(y === 1); ws.push(w); }
+  }
+  return { n, rows, accuracy: acc / n, logLoss: ll / n, brier: br / n, auc: r === 2 ? auc(sc, ps, ws) : null,
+    base: { accuracy: bAcc / n, logLoss: bLl / n, brier: bBr / n, auc: r === 2 ? 0.5 : null },
+    persist: nowVar >= 0 && pN ? { accuracy: pAcc / pN } : null };
 }
 
 /* How many baby-shifts in the data match the evidence, and how the target was spread among them. */

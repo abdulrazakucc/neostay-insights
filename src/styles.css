@@ -476,3 +476,39 @@ button.btn { border: 0; cursor: pointer; font: inherit; }
 .bn-cmp-bar { width: 120px; }
 .bn-order { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; font-size: 12.5px; color: var(--muted); }
 ol.bn-how { padding-left: 20px; }
+
+/* Bayesian network: networks, counting, ranges, gaps, drivers, most likely picture, test (2026-11-27) */
+.bn-choose { gap: 8px; }
+.bn-countnote { margin: 0 0 12px; font-size: 12.5px; color: var(--soft); max-width: 980px; }
+.bn-check { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--soft); cursor: pointer; margin-left: 8px; }
+.bn-ans-row { grid-template-columns: 150px 1fr minmax(56px, max-content) 50px; }
+.bn-ans-track i.range { top: 5px; height: 4px; bottom: auto; background: var(--ink); opacity: 0.55; border-radius: 2px; transition: none; }
+.bn-legend i.range { background: var(--ink); opacity: 0.55; height: 4px; }
+.bn-range-txt { display: block; font-style: normal; font-weight: 500; font-size: 10.5px; color: var(--muted); white-space: nowrap; }
+.bn-cmp td .bn-range-txt { display: inline; margin-left: 6px; }
+.bn-drivers { background: var(--chip); border-radius: 10px; padding: 9px 11px; display: grid; gap: 5px; margin-bottom: 8px; max-width: 760px; }
+.bn-drivers > span { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--muted); }
+.bn-driver { display: grid; grid-template-columns: minmax(150px, 34%) 1fr 54px; gap: 8px; align-items: center; font-size: 12.5px; }
+.bn-driver-track { height: 10px; background: color-mix(in srgb, var(--line) 70%, transparent); border-radius: 99px; overflow: hidden; }
+.bn-driver-track i { display: block; height: 100%; border-radius: 99px; }
+.bn-driver b { text-align: right; font-variant-numeric: tabular-nums; }
+.bn-gap { max-width: 760px; margin: 6px 0 8px; font-size: 12.5px; }
+.bn-mpe { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 6px 14px; margin-bottom: 8px; }
+.bn-mpe > div { display: grid; grid-template-columns: 10px 1fr auto; gap: 7px; align-items: center; font-size: 12.5px; padding: 5px 8px; border-radius: 8px; background: var(--chip); }
+.bn-mpe > div i { width: 10px; height: 10px; border-radius: 3px; background: var(--c); }
+.bn-mpe > div b { font-weight: 650; }
+.bn-mpe > div.differs { outline: 1.5px dashed var(--c); }
+.bn-mpe > div.differs b::after { content: " *"; color: var(--muted); }
+.bn-test { margin: 6px 0 14px; }
+.bn-test h4 { margin: 4px 0 6px; font-size: 14px; }
+.bn-test h4 small { font-weight: 400; color: var(--muted); margin-left: 8px; font-size: 12px; }
+.bn-test tr.top td { font-weight: 650; }
+.bn-preset { display: grid; gap: 3px; }
+.bn-preset:disabled { opacity: 0.55; cursor: not-allowed; }
+.bn-preset small { font-size: 11px; color: var(--muted); }
+.bn-role-tag { justify-self: start; font-size: 10px; font-weight: 700; letter-spacing: 0.4px; text-transform: uppercase; padding: 1px 6px; border-radius: 99px; background: var(--line); color: var(--soft); }
+.bn-role-tag.manager { background: color-mix(in srgb, var(--accent-2) 22%, transparent); }
+.bn-role-tag.doctor { background: color-mix(in srgb, var(--accent) 18%, transparent); }
+.cpt tr.nodata td { opacity: 0.55; font-style: italic; }
+.cpt td.cpt-nodata { text-align: center; background: repeating-linear-gradient(45deg, transparent 0 6px, color-mix(in srgb, var(--line) 60%, transparent) 6px 12px); }
+@media (max-width: 640px) { .bn-ans-row { grid-template-columns: 96px 1fr minmax(48px, max-content) 40px; } .bn-driver { grid-template-columns: 1fr 70px 46px; } }
