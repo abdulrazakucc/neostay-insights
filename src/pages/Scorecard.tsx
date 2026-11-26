@@ -239,29 +239,129 @@ export function WhyNotBigger({ data }: { data: any }) {
 /* The plan for the predictions marked not ready (docs/PREDICTIVE_IMPROVEMENT_PLAN.md). */
 export function ImprovementPlan({ items }: { items: Item[] }) {
   const nr = items.filter((i) => i.status === "not_ready");
-  if (!nr.length) return null;
   const daily = items.find((i) => i.key === "leave_daily");
-  const slope = daily?.metrics.find((m) => m.metric === "slope")?.value;
   const c14 = items.find((i) => i.key === "census_d14");
+  const census = nr.filter((i) => i.key.startsWith("census"));
   return (
-    <Card wide id="sc-plan" title="Plan for the predictions marked not ready" sub={`${nr.length} predictions: ${nr.map((i) => i.title.toLowerCase()).join("; ")}. Pass marks stay as they are; each step is judged by the same monthly test.`}>
+    <Card wide id="sc-plan" title="What was improved, and what comes next" sub="Pass marks stay as they are; each step is judged by the same monthly test.">
       <div className="sc-why">
-        <p><b>Remaining stay, updated every day.</b> Good at putting babies in order, but its stated chances are too extreme (calibration slope {slope != null ? slope.toFixed(2) : "—"}, pass mark 0.8–1.2). Why: the test's {daily?.n ?? "daily predictions"} rest on relatively few babies, because a long stay gives many near-identical daily predictions; and the recalibration uses only the last 30 training days.</p>
-        <ol className="sc-set">
-          <li><b>Recalibrate on more data</b>: all earlier months' out-of-sample predictions, per horizon (low effort).</li>
-          <li><b>Count each baby equally</b> in training, so long stays do not dominate (low).</li>
-          <li><b>Average the logistic and boosted models</b>; averaging shrinks extreme chances (low).</li>
-          <li><b>Tune for honest chances</b>: choose settings on a calibration-aware score, stronger regularisation, constraints where clinically certain (medium).</li>
-        </ol>
-        <p><b>Babies and nurses needed, 1–14 days ahead.</b> Nothing beats "same as today" by more than chance{c14 ? ` (at 14 days the forecast is ahead: ${show(c14.metrics[0].value, c14.metrics[0].fmt)} against ${show(c14.metrics[0].base, c14.metrics[0].fmt)}, not yet beyond chance)` : ""}. Tomorrow's unit is mostly today's babies; the unknowns are admissions and the timing of discharges.</p>
-        <ol className="sc-set">
-          <li><b>Forecast the change from today</b>, shrunk toward "same as today" by a weight chosen on the validation days, so it cannot do worse there (low).</li>
-          <li><b>Better discharge timing</b>: the recalibrated stay model and the board's discharge signals (discharge education noted, off tube feeds, room air) (medium).</li>
-          <li><b>Information the boards do not hold</b>: booked and expected admissions (maternal transfers, scheduled deliveries) and planned discharges from the hospital's systems; the largest expected gain (needs data access).</li>
-          <li><b>More weeks of data</b>: each month adds about 30 test days.</li>
-        </ol>
-        <p className="muted">Order: the low-effort steps first, then the monthly test again (about a week); the medium steps within a month; hospital data when it can be shared. The ready predictions go to a silent trial meanwhile. Details: docs/PREDICTIVE_IMPROVEMENT_PLAN.md in acuity-models.</p>
+        <p><b>Done.</b> The remaining stay was too sure of itself (calibration slope 0.60). The stay model now averages the logistic and boosted models and
+          corrects its chances against every earlier month: {daily?.status === "silent" ? "it now meets every pass mark" : "it still misses a pass mark"}. The ratio model mixes the table, boosted trees and the TCN, and
+          the unit model keeps only the part of the forecast change that proved right in earlier months.</p>
+        {census.length > 0 && <>
+          <p><b>Next: babies and nurses ahead ({census.map((i) => i.title.replace("Babies and nurses needed in ", "")).join(", ")}).</b> The unit model is about as good as
+            "same as today"{c14 ? ` (at 14 days ${show(c14.metrics[0].value, c14.metrics[0].fmt)} against ${show(c14.metrics[0].base, c14.metrics[0].fmt)} off)` : ""}, not better by more than chance. Tomorrow's unit is mostly today's babies; the unknowns are admissions and the timing of discharges.</p>
+          <ol className="sc-set">
+            <li><b>Better discharge timing</b>: the recalibrated stay model and the board's discharge signals (discharge education noted, off tube feeds, room air) (medium effort).</li>
+            <li><b>Information the boards do not hold</b>: booked and expected admissions (maternal transfers, scheduled deliveries) and planned discharges from the hospital's systems; the largest expected gain (needs data access).</li>
+            <li><b>More weeks of data</b>: each month adds about 30 test days.</li>
+          </ol></>}
+        <p className="muted">Details: docs/PREDICTIVE_IMPROVEMENT_PLAN.md in acuity-models.</p>
       </div>
+    </Card>
+  );
+}
+
+/* The simple view: the stay, the baby's condition ahead, and the ratio that follows from the condition through the
+   unit's past practice; one score from 0 to 1 each. */
+type Sc = { score: number | null };
+type Simple = { models: { key: string; name: string; what: string }[]; period: string;
+  stay: { admission: Sc & { c: number; miss: number; km_miss: number; n: string }; daily: Sc & { c: number; miss: number; km_miss: number; n: string };
+    by_day: (Sc & { label: string; miss: number; km_miss: number; n: number; babies: number })[] };
+  condition: { key: string; name: string; by: (Sc & { h: string; when: string; rule: number | null; acc: number; rule_acc: number; n: number })[] }[];
+  ratio: { now: Sc & { acc: number; n: number }; ahead: (Sc & { h: string; when: string; acc: number; rule_acc: number })[] };
+  practice: { modes: string[]; stages: string[]; table: { ratio: string; share: number; n: number }[][] } };
+
+function ScoreBar({ v, mode }: { v: number | null; mode: "light" | "dark" }) {
+  const p = PALETTE[mode];
+  if (v == null) return null;
+  return (
+    <div className="simple-bar" aria-hidden="true">
+      <i style={{ width: `${Math.max(0, Math.min(1, v)) * 100}%`, background: p.series[0] }} />
+      {[0.25, 0.5, 0.75].map((t) => <b key={t} style={{ left: `${t * 100}%` }} />)}
+    </div>
+  );
+}
+const Big = ({ v, mode, label }: { v: number | null; mode: "light" | "dark"; label?: string }) => (
+  <div className="simple-score">{label && <span className="simple-lab">{label}</span>}<strong>{v != null ? v.toFixed(2) : "–"}</strong><ScoreBar v={v} mode={mode} /></div>);
+
+function SimpleView({ sm, mode }: { sm: Simple; mode: "light" | "dark" }) {
+  const st = sm.stay, r = sm.ratio;
+  return (
+    <>
+      <div className="simple-models">
+        {sm.models.map((m) => <div key={m.key}><b>{m.name}</b><p>{m.what}</p></div>)}
+      </div>
+      <Card wide title="1. How long will the baby stay?" sub="Stay model · score from 0 (no better than the unit's average stay) to 1 (always right)">
+        <div className="simple-two">
+          <div><Big v={st.admission.score} mode={mode} label="At admission" />
+            <p className="simple-say">Of two newly admitted babies, it says correctly which one leaves first {Math.round(st.admission.c * 100)} times in 100; typically {num(st.admission.miss, 1)} days off (the average stay: {num(st.admission.km_miss, 1)} days off).</p></div>
+          <div><Big v={st.daily.score} mode={mode} label="On every later day" />
+            <p className="simple-say">For a baby already on the unit: right order {Math.round(st.daily.c * 100)} times in 100; typically {num(st.daily.miss, 1)} days off (the average stay: {num(st.daily.km_miss, 1)}).</p></div>
+        </div>
+        {st.by_day.length > 0 && (<>
+          <h4 className="sc-h">By how long the baby has already been on the unit</h4>
+          <div className="simple-days">{st.by_day.map((b) => (
+            <div key={b.label}><span>{b.label}</span><strong>{b.score != null ? b.score.toFixed(2) : "–"}</strong><ScoreBar v={b.score} mode={mode} />
+              <small>typically {num(b.miss, 1)} days off (average stay: {num(b.km_miss, 1)}) · {b.babies} babies</small></div>))}
+          </div></>)}
+      </Card>
+      <Card wide title="2. How will the baby's condition change?" sub="Condition model · breathing support and feeding stage (or gone home) · score from 0 (no better than the unit's usual mix) to 1 (always right)">
+        <div className="table-scroll">
+          <table className="sc-table simple-cond">
+            <thead><tr><th></th>{sm.condition[0].by.map((x) => <th key={x.h}>{x.when}</th>)}</tr></thead>
+            <tbody>{sm.condition.map((c) => (
+              <tr key={c.key}><td><b>{c.name}</b></td>{c.by.map((x) => (
+                <td key={x.h}><Big v={x.score} mode={mode} /><small>right {Math.round(x.acc * 100)} times in 100 (same as today: {Math.round(x.rule_acc * 100)})</small></td>))}</tr>))}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+      <Card wide title="3. Which nurse ratio follows from the condition?" sub="Past-practice ratio table · not a prediction: how the unit assigned ratios for each breathing support and feeding stage">
+        <div className="simple-two">
+          <div><Big v={r.now.score} mode={mode} label="Today's ratio from today's condition" />
+            <p className="simple-say">Knowing only today's breathing support and feeding, past practice gives the right ratio {Math.round(r.now.acc * 100)} times in 100. The rest depends on things the boards hold less well: spells, procedures, judgement and staffing.</p>
+            <p className="simple-say">For tomorrow, "same as today" is still the better guess for the ratio: it rarely changes overnight. A week ahead, the ratio from the predicted condition is right far more often.</p></div>
+          <div><span className="simple-lab">The ratio ahead, from the predicted condition</span>
+            <div className="simple-days small">{r.ahead.map((x) => (
+              <div key={x.h}><span>{x.when}</span><strong>{x.score != null ? x.score.toFixed(2) : "–"}</strong><ScoreBar v={x.score} mode={mode} /><small>right {Math.round(x.acc * 100)} in 100 (same as today: {Math.round(x.rule_acc * 100)})</small></div>))}
+            </div></div>
+        </div>
+        <details className="sc-details inner">
+          <summary>See the past-practice table: the usual ratio for each breathing support and feeding stage</summary>
+          <div className="table-scroll">
+            <table className="sc-table practice">
+              <thead><tr><th>Breathing support</th>{sm.practice.stages.map((x) => <th key={x}>{x}</th>)}</tr></thead>
+              <tbody>{sm.practice.modes.map((m, a) => (
+                <tr key={m}><td><b>{m}</b></td>{sm.practice.table[a].map((c, b) => (
+                  <td key={b} className={c.n < 5 ? "few" : ""}>{c.n ? <><b>{c.ratio}</b><small>{pct(c.share, 0)} of {c.n} boards</small></> : <small>never seen</small>}</td>))}</tr>))}
+              </tbody>
+            </table>
+          </div>
+          <small className="muted">From the training months of the last test month. Combinations seen fewer than 5 times use the breathing-support row.</small>
+        </details>
+      </Card>
+      <div className="note"><b>How to read the score</b> <TermLink id="score-01" text="(definition)" />. It says how much smaller a model's errors are than those of the simplest guess
+        (the unit's averages): 0.40 means 40% smaller. "Same as today" can be right as often as a model yet score lower, because it is always fully sure and each miss counts heavily.
+        Every score comes from {sm.period}. No prediction is used for decisions about an individual baby. Nurses needed for the whole unit will follow from these by adding up the babies; it is not the focus yet.</div>
+    </>
+  );
+}
+
+/* Every model compared for the condition ahead (analysts). */
+function ConditionDetail({ cond }: { cond: any }) {
+  const NM: Record<string, string> = { persistence: "Same as today", table: "What usually follows today's state", gbm: "Boosted-tree model", ens: "Condition model (mix)", base: "The unit's usual mix" };
+  return (
+    <Card wide title="The condition ahead: every model compared" sub="Monthly test, pooled over six months. Brier score and log loss: lower is better.">
+      {[["mode", "Breathing support"], ["stage", "Feeding stage"]].map(([t, name]) => (
+        <div key={t} className="table-scroll"><h4 className="sc-h">{name}</h4>
+          <table className="sc-table">
+            <thead><tr><th>Model</th>{["1", "3", "7"].map((h) => <th key={h}>{h} day{h !== "1" ? "s" : ""}: right · Brier · log loss</th>)}</tr></thead>
+            <tbody>{["base", "persistence", "table", "gbm", "ens"].map((k) => (
+              <tr key={k} className={k === "ens" ? "sc-chosen" : ""}><td><b>{NM[k]}</b></td>{["1", "3", "7"].map((h) => { const m = cond[t][h].models[k]; return (
+                <td key={h} className="sc-val">{pct(m.accuracy, 0)} · {m.brier.toFixed(3)} · {m.log_loss.toFixed(3)}</td>); })}</tr>))}
+            </tbody>
+          </table></div>))}
     </Card>
   );
 }
@@ -270,52 +370,28 @@ export default function Scorecard({ data, mode }: Props) {
   const sc = data.scorecard;
   if (!sc?.items?.length) return <div className="empty">No prediction scores yet: run `make insights-data` in acuity-models.</div>;
   const items: Item[] = sc.items;
-  const counts = { silent: items.filter((i) => i.status === "silent").length, not_ready: items.filter((i) => i.status === "not_ready").length,
-    comparison: items.filter((i) => i.status === "comparison").length };
   return (
     <>
       <PageHead eyebrow="Predictive models" title="How good are the predictions?"
-        lead="Every prediction the models make, scored on real Center 6 babies the models never saw while learning, in plain words and beside the simple rule it has to beat. For each one: the model used, the models it was compared with, why it was chosen, and the pass marks it met or missed. No model is approved for decisions about an individual baby." />
-      <div className="note"><b>Which test?</b> These results come from the <TermLink id="monthly" text="monthly test" /> (six months, each model retrained before a cut-off and tested on the next 30 days), the decisive test.
-        The <a href="#predictive/overview">Predictive modeling &amp; evaluation</a> pages show the earlier <TermLink id="holdout" text="75-day test" />, a single look at the last 75 days, with more technical detail; their numbers differ a little because the babies tested differ.</div>
-      <div className="kpis">
-        <div className="kpi"><span className="kpi-label">Predictions scored</span><span className="kpi-value">{items.length}</span><span className="kpi-sub">stays, ratios, breathing, feeding, census and nurses</span></div>
-        <div className="kpi" style={{ "--accent": PALETTE[mode].good } as React.CSSProperties}><span className="kpi-label">Ready for a silent trial</span><span className="kpi-value">{counts.silent}</span><span className="kpi-sub">met every pass mark</span></div>
-        <div className="kpi" style={{ "--accent": PALETTE[mode].bad } as React.CSSProperties}><span className="kpi-label">Not ready</span><span className="kpi-value">{counts.not_ready}</span><span className="kpi-sub">missed a pass mark</span></div>
-        <div className="kpi"><span className="kpi-label">Measured, not yet gated</span><span className="kpi-value">{counts.comparison}</span><span className="kpi-sub">one test or the earlier study</span></div>
-      </div>
-      <div className="grid">
-        <Card wide title="What the three statuses mean" sub="Every prediction has one">
-          <div className="sc-gloss">{Object.entries(STATUS).map(([k, s]) => <div key={k}><b><span className={`badge ${s.cls}`}>{s.label}</span></b><span>{s.text}</span></div>)}</div>
-        </Card>
-        <Card wide title="Where each prediction stands today" sub="One line per prediction: the model used, its main score beside the simple rule, and the status. The main score is the one score shown first for each prediction, because it answers the question most people ask about it; click a prediction for all its scores."
-          n={`${items.length} predictions`}>
-          <div className="table-scroll">
-            <table className="sc-table">
-              <thead><tr><th>Prediction</th><th>Model used</th><th>Main score</th><th>Model</th><th>Simple rule</th><th>Status</th></tr></thead>
-              <tbody>
-                {items.map((it) => {
-                  const h = it.metrics[0], st = STATUS[it.status] ?? STATUS.comparison;
-                  return (
-                    <tr key={it.key}>
-                      <td><a href="#scorecard" onClick={(e) => { e.preventDefault(); document.getElementById(`sc-${it.key}`)?.scrollIntoView({ behavior: "smooth" }); }}><b>{it.title}</b></a></td>
-                      <td><small>{it.model}</small></td>
-                      <td>{h.label}<TermLink id={h.metric} /></td><td className="sc-val">{show(h.value, h.fmt)}</td>
-                      <td>{h.base != null ? <>{show(h.base, h.fmt)}<small>{h.base_label}</small></> : "—"}</td>
-                      <td><span className={`badge ${st.cls}`}>{st.label}</span></td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </Card>
-        <Terms wide title="Scores used on this page" ids={["main-score", "c-index", "typical-miss", "ibs", "skill", "coverage", "slope", "in-the-large", "ppv", "sensitivity", "accuracy", "log-loss", "honest-chances", "mae", "within-one", "bias", "baseline", "paired", "pass-mark", "silent", "feature-set", "tft", "tcn"]} />
-        {items.map((it) => <ItemCard key={it.key} it={it} mode={mode} inputs={data.model_inputs} />)}
-        <ImprovementPlan items={items} />
-        <WhyNotBigger data={data} />
-        <ModelInputs inputs={data.model_inputs} />
-      </div>
+        lead="Everything starts from the baby: how long the stay will be, and how the baby's condition will change. The nurse ratio follows from the condition through the unit's past practice. Each gets one score from 0 (no better than the unit's averages) to 1 (always right), measured on real Center 6 babies the models had never seen." />
+      {sc.simple && <SimpleView sm={sc.simple} mode={mode} />}
+      <details className="sc-details analyst">
+        <summary>Technical details for analysts: every score, the models compared, pass marks, training settings and inputs</summary>
+        <div className="grid" style={{ marginTop: 12 }}>
+          <Terms wide title="Scores used in these details" ids={["c-index", "typical-miss", "ibs", "skill", "coverage", "slope", "in-the-large", "accuracy", "log-loss", "brier", "honest-chances", "mae", "within-one", "bias", "baseline", "paired", "pass-mark", "feature-set", "tft", "tcn"]} />
+          {items.filter((it) => it.key.startsWith("leave_")).map((it) => <ItemCard key={it.key} it={it} mode={mode} inputs={data.model_inputs} />)}
+          {sc.condition && <ConditionDetail cond={sc.condition} />}
+          <ModelInputs inputs={data.model_inputs} />
+          <details className="sc-details wide">
+            <summary>Earlier forecasts, not the focus now: nurse ratio models, babies and nurses needed, the Temporal Fusion Transformer</summary>
+            <div className="grid" style={{ marginTop: 12 }}>
+              {items.filter((it) => it.key.startsWith("ratio_") || it.key.startsWith("census_")).map((it) => <ItemCard key={it.key} it={it} mode={mode} inputs={data.model_inputs} />)}
+              <ImprovementPlan items={items} />
+              <WhyNotBigger data={data} />
+            </div>
+          </details>
+        </div>
+      </details>
     </>
   );
 }

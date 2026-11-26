@@ -14,7 +14,7 @@ const ABOUT: Record<string, string> = {
   overview: "The unit in five numbers.", part1: "Who the babies are, how long they stay, breathing, feeding and growth.",
   part2: "The bedside nurses the babies' ratios call for, shift by shift.", part3: "What sets a baby's ratio and which babies take most of the nursing.",
   part4: "Stays and their length, care, admissions and census, nursing by skill, nurse shifts.", part5: "Computer-made babies: how realistic and how safe they are.",
-  part6: "The scorecard: how good each prediction is today, in plain scores.", part7: "Made-up what-if units and what they show about beds and staffing.",
+  part6: "How long a baby will stay and how the condition will change, each with one score from 0 to 1; the nurse ratio follows from the condition.", part7: "Made-up what-if units and what they show about beds and staffing.",
   part8: "What the results cannot tell us, and what we ask of you.",
   bayes: "Draw how things relate, learn the chances from the data, and ask what-if questions.",
   metrics: "Every score and term used to judge the models and the synthetic data: plain words and technical definition.",
