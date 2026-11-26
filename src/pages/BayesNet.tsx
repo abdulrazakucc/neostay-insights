@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Background, Handle, MarkerType, Position, ReactFlow, ReactFlowProvider, useReactFlow,
+import { Background, ConnectionMode, Handle, MarkerType, Position, ReactFlow, ReactFlowProvider, useReactFlow,
   type Connection, type ConnectionLineComponentProps, type Edge as FlowEdge, type Node as FlowNode, type NodeChange, type NodeProps, applyNodeChanges } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { Card, PageHead, Segmented } from "../ui";
@@ -14,7 +14,7 @@ import { TermsBox } from "./Metrics";
    ask "what if" questions and see the answer as chances. Learning and reasoning run in the browser (bn.ts) on
    the dataset files from acuity_insights/bayes.py; nothing is sent anywhere. */
 
-type Net = { nodes: string[]; edges: Edge[]; pos: Record<string, { x: number; y: number }> };
+type Net = { nodes: string[]; edges: Edge[]; pos: Record<string, { x: number; y: number }>; seen?: string[] };
 type Tab = "design" | "learn" | "reason";
 type NodeData = { v: Dataset["variables"][number]; tab: Tab; post?: Float64Array; prior?: Float64Array; ev?: number; target?: boolean;
   learned: boolean; onPick: (id: string, s: number) => void; onTarget: (id: string) => void; mode: "light" | "dark" };
@@ -23,6 +23,7 @@ type NodeData = { v: Dataset["variables"][number]; tab: Tab; post?: Float64Array
 const PRESETS: { q: string; ev: Evidence; t: string[] }[] = [
   { q: "A baby on CPAP: which nurse ratio, and will the baby leave within a week?", ev: { resp: 2 }, t: ["ratio", "leave7"] },
   { q: "Born before 28 weeks: what care, and how soon home?", ev: { ga: 0 }, t: ["resp", "ratio", "leave7"] },
+  { q: "Born before 28 weeks and under 1,000 g: how long is the whole stay?", ev: { ga: 0, bw: 0 }, t: ["los"] },
   { q: "Off tube feeds: will the baby leave within 7 days?", ev: { feed: 5 }, t: ["leave7", "ratio"] },
   { q: "At 1:2 today: the ratio tomorrow?", ev: { ratio: 3 }, t: ["ratio_next"] },
   { q: "Babies needing 1:1 — what are they like? (reasoning backwards)", ev: { ratio: 4 }, t: ["resp", "ga", "line", "dol"] },
@@ -34,17 +35,18 @@ const PRESETS: { q: string; ev: Evidence; t: string[] }[] = [
    lightness band and chroma in both themes. The name is always shown, so colour is never the only cue. */
 export const VAR_COLORS: Record<"light" | "dark", Record<string, string>> = {
   light: { ga: "#376fa6", bw: "#a88fd6", dol: "#bc994c", cga: "#167f5c", wt: "#8d5489", resp: "#38b1bd", feed: "#975b23", line: "#d282a2",
-    spells: "#82ad6a", sepsis: "#a0514c", ratio: "#5a66a8", ratio_next: "#49accf", leave7: "#bc89c7" },
+    spells: "#82ad6a", sepsis: "#a0514c", ratio: "#5a66a8", ratio_next: "#49accf", leave7: "#bc89c7", los: "#d58966" },
   dark: { ga: "#3a75af", bw: "#a78dd7", dol: "#bc9744", cga: "#158561", wt: "#955890", resp: "#2ab0bd", feed: "#a06024", line: "#d27fa0",
-    spells: "#7fac65", sepsis: "#a85550", ratio: "#5f6bb1", ratio_next: "#40abd0", leave7: "#bb86c7" },
+    spells: "#7fac65", sepsis: "#a85550", ratio: "#5f6bb1", ratio_next: "#40abd0", leave7: "#bb86c7", los: "#d58662" },
 };
 export const colorOf = (id: string, mode: "light" | "dark") => VAR_COLORS[mode][id] ?? PALETTE[mode].series[0];
 
 const STORE = (center: string) => `insights-bn-${center}`;   // one drawing per center, shared by its real and synthetic data
+const ADDED_LATER = ["los"];   // variables added to the network data after the first release (Length of stay, 2026-11-26)
 const KIND_NAME: Record<string, string> = { real: "Real", synthetic: "Synthetic" };
 const W = 305, H = 275;
 const defaultNet = (ds: Dataset): Net => ({
-  nodes: ds.variables.map((v) => v.id), edges: ds.default_edges.map((e) => [e[0], e[1]] as Edge),
+  nodes: ds.variables.map((v) => v.id), seen: ds.variables.map((v) => v.id), edges: ds.default_edges.map((e) => [e[0], e[1]] as Edge),
   pos: Object.fromEntries(ds.variables.map((v) => [v.id, { x: (ds.layout[v.id]?.[0] ?? 0) * W + 40, y: (ds.layout[v.id]?.[1] ?? 0) * H + 20 }])) });
 const sig = (n: Net) => JSON.stringify([n.nodes.slice().sort(), n.edges.map((e) => e.join(">")).sort()]);
 
@@ -126,7 +128,7 @@ function BayesInner({ mode, center }: Props & { center: any }) {
   const [selEdge, setSelEdge] = useState<string | null>(null);
   const [cptNode, setCptNode] = useState<string>("ratio");
   const [evidence, setEvidence] = useState<Evidence>({});
-  const [targets, setTargets] = useState<string[]>(["ratio", "leave7"]);
+  const [targets, setTargets] = useState<string[]>(["ratio", "leave7"]);  // a starting question; the viewer changes it
   const [sugs, setSugs] = useState<Suggestion[] | null>(null);
   const [busy, setBusy] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -147,6 +149,14 @@ function BayesInner({ mode, center }: Props & { center: any }) {
       try { const raw = localStorage.getItem(STORE(cid)) ?? localStorage.getItem(`${STORE(cid)}-${kinds[0]}`); if (raw) n = JSON.parse(raw); } catch { /* storage unavailable */ }
       const ids = new Set(d.variables.map((v) => v.id));
       if (!n || !n.nodes.every((x) => ids.has(x)) || !n.edges.every(([a, b]) => ids.has(a) && ids.has(b))) n = defaultNet(d);
+      // Variables added to the data since the drawing was saved join it with our starting arrows, once.
+      // Drawings saved before this record existed knew every variable except those added later.
+      const seen = new Set<string>(n.seen ?? d.variables.map((v) => v.id).filter((x) => !ADDED_LATER.includes(x))), fresh = d.variables.map((v) => v.id).filter((x) => !seen.has(x) && !n!.nodes.includes(x));
+      if (fresh.length) {
+        const def = defaultNet(d), nodes = [...n.nodes, ...fresh], edges = [...n.edges];
+        for (const [a, b] of def.edges) if ((fresh.includes(a) || fresh.includes(b)) && nodes.includes(a) && nodes.includes(b) && !edgeProblem(edges, a, b)) edges.push([a, b]);
+        n = { nodes, edges, pos: { ...def.pos, ...n.pos }, seen: d.variables.map((v) => v.id) } as Net;
+      }
       setNet(n);
     }).catch(() => live && setErr("The network data could not be loaded. Reload the page (on this computer: run `make insights-data`)."));
     return () => { live = false; };
@@ -240,9 +250,29 @@ function BayesInner({ mode, center }: Props & { center: any }) {
     setSelEdge(`${a}>${b}`);
     return true;
   }, [net, commit, V]);
+  // Dropping an arrow's end anywhere on a box counts, not only on its small dot; a drop that misses every box
+  // says so instead of doing nothing.
+  const reconnectDone = useRef(false);
+  const boxUnder = (e: MouseEvent | TouchEvent) => {
+    const pt = "changedTouches" in e ? e.changedTouches[0] : e;
+    return (document.elementFromPoint(pt.clientX, pt.clientY)?.closest(".react-flow__node") as HTMLElement | null)?.dataset.id ?? null;
+  };
   const onReconnect = useCallback((old: FlowEdge, c: Connection) => {
+    reconnectDone.current = true;
     if (c.source && c.target) moveEdge(old.id, c.source, c.target);
   }, [moveEdge]);
+  const onReconnectEnd = useCallback((e: MouseEvent | TouchEvent, old: FlowEdge, end: string) => {
+    if (reconnectDone.current) { reconnectDone.current = false; return; }
+    const box = boxUnder(e);
+    if (!box) return setMsg({ text: "Not moved: drop the end of the arrow on a box.", cls: "warn" });
+    const [a, b] = old.id.split(">");
+    moveEdge(old.id, end === "source" ? box : a, end === "source" ? b : box);
+  }, [moveEdge]);
+  const onConnectEnd = useCallback((e: MouseEvent | TouchEvent, st: any) => {
+    if (st?.isValid || !st?.fromNode) return;
+    const box = boxUnder(e);
+    if (box && box !== st.fromNode.id) onConnect({ source: st.fromHandle?.type === "target" ? box : st.fromNode.id, target: st.fromHandle?.type === "target" ? st.fromNode.id : box, sourceHandle: null, targetHandle: null });
+  }, [onConnect]);
   const removeEdge = (key: string) => {
     if (!net) return;
     const [a, b] = key.split(">");
@@ -361,12 +391,13 @@ function BayesInner({ mode, center }: Props & { center: any }) {
           </div>
           <div className="bn-canvas">
             <ReactFlow nodes={rfNodes} edges={flowEdges} nodeTypes={nodeTypes} onNodesChange={onNodesChange} onConnect={tab === "design" ? onConnect : undefined}
-              onReconnect={tab === "design" ? onReconnect : undefined} edgesReconnectable={tab === "design"} reconnectRadius={18}
+              onReconnect={tab === "design" ? onReconnect : undefined} onReconnectStart={() => { reconnectDone.current = false; }} onReconnectEnd={tab === "design" ? onReconnectEnd : undefined}
+              onConnectEnd={tab === "design" ? onConnectEnd : undefined} connectionMode={ConnectionMode.Loose} edgesReconnectable={tab === "design"} reconnectRadius={24}
               nodesConnectable={tab === "design"} edgesFocusable elementsSelectable
               onEdgeClick={(_, e) => setSelEdge(e.id)} onPaneClick={() => setSelEdge(null)}
               onEdgesDelete={(es) => tab === "design" && es.forEach((e) => removeEdge(e.id))} deleteKeyCode={tab === "design" ? ["Backspace", "Delete"] : null}
               connectionLineComponent={DragLine} connectionRadius={70} connectOnClick colorMode={mode} fitView fitViewOptions={{ padding: 0.06 }} minZoom={0.15} maxZoom={2}
-              zoomOnScroll={false} preventScrolling={false} zoomOnDoubleClick={false} panOnScroll={false} proOptions={{ hideAttribution: true }}>
+              zoomOnScroll={false} preventScrolling={false} zoomOnDoubleClick={false} panOnScroll={false}>
               <Background gap={22} size={1} color={p.grid} />
             </ReactFlow>
             {se && (
