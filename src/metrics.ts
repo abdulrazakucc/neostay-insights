@@ -166,6 +166,14 @@ export const METRICS: Metric[] = [
     lay: "A deep-learning model that reads the last two weeks of a baby's boards, shift by shift, to predict the stay and the ratio ahead.",
     technical: "Temporal convolutional network: 4 dilated causal convolution layers (dilations 1, 2, 4, 8; 32 channels; dropout 0.2) over 28 shifts plus static features; a 30-day hazard head and a 1/3/7-day ratio head; 17,872 parameters.",
     ideal: "—", where: "Scorecard; Model architectures" },
+  { id: "tft", name: "Temporal Fusion Transformer (TFT)", group: "Looking inside a model",
+    lay: "A deep-learning forecaster built for many inputs. It decides how much to use each input, remembers the last two weeks, looks back at the days that matter and forecasts every day ahead. Here one reads each baby's boards (every input), another the unit's boards.",
+    technical: "Lim et al. (2021): variable selection networks (static, past, future), static covariate encoders, LSTM encoder–decoder, gated residual networks, interpretable multi-head attention with a causal mask, position-wise GRN. Babies: 28 past shifts of every input, 30 future days; heads: daily hazard (censoring-aware likelihood) and ratio on days 1/3/7. Unit: 28 past boards, 28 future boards; quantile loss (10/50/90%) on the change in babies and nurses. Hidden 16, 4 heads, dropout 0.2, Adam 1e-3, weight decay 1e-3, early stopping on the validation days.",
+    ideal: "—", where: "Scorecard; Model architectures; Model comparison" },
+  { id: "feature-set", name: "Core inputs or every input", group: "Looking inside a model",
+    lay: "Each model could use the core inputs (the ones used first) or every field both the real and synthetic boards carry. In every month of the test it tried both on the 30 days before the cut-off and kept the one that predicted better, so extra inputs are used only where they help.",
+    technical: "Feature set as a tuned hyperparameter: {core (23 daily / 15 at admission), all (65 / 54)} × the model's grid, chosen by validation IBS (survival) or log loss (ratio) on the inner validation window; the chosen set is refitted on all training origins.",
+    ideal: "—", where: "Scorecard (model details); Model inputs" },
 
   // ---------------------------------------------------------------- synthetic fidelity
   { id: "ks", name: "Kolmogorov–Smirnov distance", also: "KS", group: "Synthetic data: how close to real",

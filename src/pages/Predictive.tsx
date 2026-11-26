@@ -25,8 +25,8 @@ const sub = () => location.hash.slice(1).split("/")[1] || "overview";
 const PAGE_TERMS: Record<string, string[]> = {
   overview: ["holdout", "unseen", "ibs", "km", "log-loss", "mae", "persistence", "lookup", "tcn"],
   experiments: ["ibs", "ci", "c-index", "coverage", "log-loss", "accuracy", "unseen"],
-  architectures: ["hazard", "platt", "tcn", "lookup", "km"],
-  comparison: ["ibs", "km", "log-loss", "persistence", "lookup", "tcn", "mae", "c-index"],
+  architectures: ["hazard", "platt", "tcn", "tft", "lookup", "km"],
+  comparison: ["ibs", "km", "log-loss", "persistence", "lookup", "tcn", "tft", "mae", "c-index"],
   journey: ["lookup", "persistence"],
   calibration: ["calibration", "coverage", "brier", "accuracy", "slope"],
   explain: ["shapley", "odds-ratio", "ablation", "ibs", "log-loss"],
@@ -44,7 +44,7 @@ export default function Predictive({ data, mode, center }: Props) {
   if (!pr) return <div className="empty">No predictive results yet: run `python -m acuity_predict.study` in acuity-models.</div>;
   const R = pr.results, reg = pr.registry, rd = pr.readiness;
   const S = R.survival?.modes?.[smode];
-  const J = R.journey, T = R.tcn, H = R.hospital;
+  const J = R.journey, T = R.tcn, H = R.hospital, F = R.tft;
   const v = sub();
   const realCenter = !center || center.has_real_data;
   const banner = !realCenter && <div className="banner scenario"><b>{center.name}</b><span>EVALUATION IS FOR CENTER 6 ONLY</span><p>These models were trained and evaluated on Center 6 data. Their performance at {center.name} is unknown; forecasts for it are simulated scenarios.</p></div>;
@@ -134,7 +134,7 @@ export default function Predictive({ data, mode, center }: Props) {
         <div className="grid">
           <Card wide title="Discrete-time survival (logistic and gradient-boosted)" sub="Event: leaving the unit; competing risks not estimable (exit type not recorded)">
             {boxes(["Board features", "+ day basis", "Hazard per day", "Platt recalibration", "S(d) = Π(1−h)"], p.series[0])}
-            <div className="note">Inputs: {(R.survival.modes.daily.features || []).length} features at the origin board. Output: probability of leaving by day 1–30, median and 80% range. Assumption: hazards depend only on the origin features and the day.</div>
+            <div className="note">Inputs: the core features or every feature both datasets carry ({(R.survival.modes.daily.features || []).length} at a daily origin), whichever does better on the development validation days (see How good are the predictions? → Model inputs for every input and its range). Output: probability of leaving by day 1–30, median and 80% range. Assumption: hazards depend only on the origin features and the day.</div>
           </Card>
           <Card wide title="Multistate patient journey" sub="Boosted transition models of the hybrid generator, simulated shift by shift">
             {boxes(["Today's board", "Ratio → breathing → feeding …", "Flags, weight", "Leave? (stop)", "Daily distributions"], p.series[1])}
@@ -144,6 +144,12 @@ export default function Predictive({ data, mode, center }: Props) {
             {boxes(["28-shift history + mask", "Dilated causal conv ×4", "+ static features", "Hazard head (30 d)", "Ratio head (1, 3, 7 d)"], p.series[2])}
             <div className="note">Channels {T?.architecture.conv_channels}, dilations {T?.architecture.dilations?.join(", ")}, dropout {T?.architecture.dropout}. Assumption: the last 14 days of boards carry the useful history.</div>
           </Card>
+          {F && <Card wide title="Temporal Fusion Transformer (each baby and the unit)" sub={`${num(F.babies.experiments.B.parameters, 0)} parameters (each baby) · ${num(F.unit.experiments.B.parameters, 0)} (the unit)`}>
+            {boxes(["Every input, 28 shifts", "Variable selection", "LSTM encoder → decoder", "Attention over the days", "Hazard + ratio heads"], p.series[1])}
+            <div className="note">Each baby: {F.babies.names.past.length - 4} board inputs over the last {F.past_shifts} shifts, static gestational age and birth weight, the next 30 days' calendar as known inputs; outputs the daily chance of leaving for 30 days and the ratio on days 1, 3 and 7.
+              The unit: its last 28 boards (babies, admissions, discharges, ratio mix, breathing, lines, nurses) and the calendar ahead; outputs the 10th, 50th and 90th percentiles of the change in babies and nurses for 14 days.
+              Hidden size {F.config.hidden} (unit {F.unit_config.hidden}), {F.config.heads} heads, dropout {F.config.dropout}, Adam {F.config.lr}, weight decay {F.config.weight_decay}, early stopping. Assumption: the history and the calendar carry the information; nothing about booked admissions or planned discharges is known.</div>
+          </Card>}
           <Card wide title="Hospital forecasting engine" sub="Monte Carlo over current and new babies">
             {boxes(["Current babies' futures", "+ Bayesian admissions", "32-bed limit", "Ratios → nurses", "Daily quantiles"], p.series[0])}
             <div className="note">Census conservation (census = previous + admitted − left); unmet admissions counted, never dropped silently; available nurses are provisional (assumed).</div>
@@ -193,6 +199,21 @@ export default function Predictive({ data, mode, center }: Props) {
           <Card n={`${H?.origins} origins`} title="Census forecast error" sub="Mean absolute error in babies, by horizon" right={<Legend items={[{ color: p.series[0], label: "Engine" }, { color: p.muted, label: "Persistence" }, { color: p.series[1], label: "Dev. mean" }]} />}>
             <Chart option={hOpt} height={250} label="Census comparison" />
           </Card>
+          {F && <Card wide n={`${F.babies.n.test_origins} test origins · ${F.unit.n.test_origins} unit forecasts`} title="Temporal Fusion Transformer, trained three ways"
+            sub="The same real test days; trained on synthetic data only (A), real development boards only (B), or both (C)">
+            <TableView open head={["Each baby", "Training data", "IBS (lower better)", "C-index", "Ratio log loss day 1 / 3 / 7", "Epochs"]}
+              rows={["A", "B", "C"].map((e) => { const x = F.babies.experiments[e]; return ["TFT", EXP[e], num(x.survival.ibs, 4), num(x.survival.c_index, 3),
+                `${num(x.ratio.ratio_d1.log_loss, 3)} / ${num(x.ratio.ratio_d3.log_loss, 3)} / ${num(x.ratio.ratio_d7.log_loss, 3)}`, x.epochs]; })
+                .concat([["Logistic hazard", "Real only", num(R.survival.modes.daily.experiments.B.logit.ibs, 4), num(R.survival.modes.daily.experiments.B.logit.c_index, 3), "—", "—"],
+                  ["Gradient-boosted hazard", "Real only", num(R.survival.modes.daily.experiments.B.gbm.ibs, 4), num(R.survival.modes.daily.experiments.B.gbm.c_index, 3), "—", "—"],
+                  ["TCN", "Real + synthetic", num(T?.experiments.C.survival.ibs, 4), num(T?.experiments.C.survival.c_index, 3),
+                    `${num(T?.experiments.C.ratio.ratio_d1.log_loss, 3)} / ${num(T?.experiments.C.ratio.ratio_d3.log_loss, 3)} / ${num(T?.experiments.C.ratio.ratio_d7.log_loss, 3)}`, T?.experiments.C.epochs],
+                  ["Lookup table", "Real only", "—", "—", `${num(J?.baselines.empirical.ratio_d1.log_loss, 3)} / ${num(J?.baselines.empirical.ratio_d3.log_loss, 3)} / ${num(J?.baselines.empirical.ratio_d7.log_loss, 3)}`, "—"]])} />
+            <TableView open head={["The unit", "Training data", "Typical miss in babies: 1 / 3 / 7 / 14 days", "Same as today", "80% range holds", "Nurses within one (1 day)"]}
+              rows={["A", "B", "C"].map((e) => { const x = F.unit.experiments[e]; return ["TFT", EXP[e], ["1", "3", "7", "14"].map((h) => num(x.by_h[h].mae, 2)).join(" / "),
+                ["1", "3", "7", "14"].map((h) => num(F.unit.persistence[h].mae, 2)).join(" / "), ["1", "3", "7", "14"].map((h) => pct(x.by_h[h].coverage_80, 0)).join(" / "), pct(x.by_h["1"].nurses_within_1, 0)]; })} />
+            <small className="muted">One training run each (seed 0). Synthetic data: Center 6's synthetic unit, from generators fitted on the development boards only ({num(F.babies.n.synthetic_origins, 0)} baby origins, {num(F.unit.n.synthetic_origins, 0)} unit origins).</small>
+          </Card>}
           <Card n={`${S?.n.test_stays} test babies`} title="By gestational age (real only)" sub="IBS and C-index by GA band (bands with 5+ babies)">
             <TableView open head={["Model", "GA band", "Origins", "Babies", "IBS", "C-index"]} rows={Object.entries(S?.subgroups || {}).flatMap(([k, g]: any) => Object.entries(g).map(([b, x]: any) => [MODEL[k], b, x.origins, x.stays, num(x.ibs, 3), num(x.c_index, 3)]))} />
           </Card>
