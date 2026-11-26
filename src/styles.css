@@ -474,3 +474,5 @@ button.btn { border: 0; cursor: pointer; font: inherit; }
 .bn-cmp-metrics small { display: block; font-size: 10.5px; color: var(--muted); line-height: 1.3; }
 .card.wide .bn-answer, .card.wide .bn-legend, .card.wide .bn-say, .card.wide .bn-inf, .card.wide .bn-obs { max-width: 760px; }
 .bn-cmp-bar { width: 120px; }
+.bn-order { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; font-size: 12.5px; color: var(--muted); }
+ol.bn-how { padding-left: 20px; }

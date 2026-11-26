@@ -131,6 +131,9 @@ function BayesInner({ mode, center }: Props & { center: any }) {
   const [targets, setTargets] = useState<string[]>(["ratio", "leave7"]);  // a starting question; the viewer changes it
   const [sugs, setSugs] = useState<Suggestion[] | null>(null);
   const [busy, setBusy] = useState(false);
+  // How the answers' values are ordered: highest chance first unless the viewer chooses otherwise.
+  const [order, setOrder] = useState<Order>(() => { try { const o = localStorage.getItem("insights-bn-order"); return o === "asc" || o === "natural" ? o : "desc"; } catch { return "desc"; } });
+  const chooseOrder = (o: string) => { setOrder(o as Order); try { localStorage.setItem("insights-bn-order", o); } catch { /* storage unavailable */ } };
   const fileRef = useRef<HTMLInputElement>(null);
   const flow = useReactFlow();
   const fitFrame = useCallback(() => window.setTimeout(() => flow.fitView({ padding: 0.06, duration: 450 }), 80), [flow]);
@@ -416,7 +419,11 @@ function BayesInner({ mode, center }: Props & { center: any }) {
           </div>
         </div>
 
-        {tab === "reason" && learned && <Answers ds={ds} dec={dec} model={model!} evidence={evidence} targets={targets.filter((t) => model!.nodes.includes(t))} prior={prior} post={post} label={label} realSet={realSet} mode={mode}
+        {tab === "reason" && learned && targets.length > 0 && (
+          <div className="bn-order"><span>Order of the values in each answer:</span>
+            <Segmented value={order} onChange={chooseOrder} options={[{ key: "desc", label: "Highest chance first" }, { key: "asc", label: "Lowest chance first" }, { key: "natural", label: "Original order" }]} />
+          </div>)}
+        {tab === "reason" && learned && <Answers order={order} ds={ds} dec={dec} model={model!} evidence={evidence} targets={targets.filter((t) => model!.nodes.includes(t))} prior={prior} post={post} label={label} realSet={realSet} mode={mode}
           cmp={otherModel && other ? { kind: other, ds: sets[other], dec: decs[other], prior: otherPrior, post: otherPost } : undefined} mainKind={kind} />}
         </div>
         <aside className="bn-side">
@@ -474,6 +481,15 @@ function BayesInner({ mode, center }: Props & { center: any }) {
               </ul>
               <small className="muted">Same structure, learned separately on {num(sets[kind].n, 0)} {kind} and {num(sets[other].n, 0)} {other} baby-shifts.</small>
             </Card>}
+            <Card title="How the probabilities are learned" sub="All in this browser, from the dataset file; nothing is sent anywhere">
+              <ol className="bn-how">
+                <li>The data file holds every baby-shift as a pattern of values (no names, dates or notes), with how many baby-shifts share it. On the hosted site it is decrypted after you sign in.</li>
+                <li>For each variable, it counts how often each of its values occurs for every combination of the variables pointing into it, using only baby-shifts where all of them are recorded.</li>
+                <li>Each count gets a tiny equal starting share (a Dirichlet prior with equivalent sample size 1), so a combination never seen gets equal chances, not 0%.</li>
+                <li>Count ÷ total for the combination = the chance in the table. Each row adds to 100%.</li>
+              </ol>
+              <small className="muted">{otherModel && other ? `Done twice, on the same drawing: ${num(sets[kind].n, 0)} ${kind} and ${num(sets[other].n, 0)} ${other} baby-shifts.` : `From ${num(ds.n, 0)} baby-shifts.`} Questions are then answered by exact calculation from these tables (variable elimination).</small>
+            </Card>
             <Card title="Probability tables" sub="Pick a variable to see its chances for every combination of its parents">
               <select value={cptNode} onChange={(e) => setCptNode(e.target.value)} aria-label="Variable">{model!.nodes.map((n) => <option key={n} value={n}>{label(n)}</option>)}</select>
             </Card>
@@ -556,8 +572,14 @@ function CptView({ ds, model, node, label, mode }: { ds: Dataset; model: Model; 
 }
 
 /* ------------------------------------------------------------------ the answers */
+type Order = "desc" | "asc" | "natural";
+/* The order of a variable's values for display: by chance (highest or lowest first, ties in original order) or as defined. */
+const orderOf = (p: ArrayLike<number>, order: Order) => {
+  const idx = Array.from({ length: p.length }, (_, k) => k);
+  return order === "natural" ? idx : idx.sort((x, y) => (order === "desc" ? p[y] - p[x] : p[x] - p[y]) || x - y);
+};
 type Cmp = { kind: string; ds: Dataset; dec: Decoded; prior: Record<string, Float64Array>; post: Record<string, Float64Array> };
-function Answers({ ds, dec, model, evidence, targets, prior, post, label, realSet, mode, cmp, mainKind }: { ds: Dataset; dec: Decoded; model: Model; evidence: Evidence; targets: string[];
+function Answers({ order, ds, dec, model, evidence, targets, prior, post, label, realSet, mode, cmp, mainKind }: { order: Order; ds: Dataset; dec: Decoded; model: Model; evidence: Evidence; targets: string[];
   prior: Record<string, Float64Array>; post: Record<string, Float64Array>; label: (s: string) => string; realSet: boolean; mode: "light" | "dark"; cmp?: Cmp; mainKind: string }) {
   const hasEv = Object.keys(evidence).length > 0;
   if (!targets.length) return <Card wide title="Your answers"><div className="note">Choose at least one variable under <b>② What you want to know</b> (or click <b>Ask</b> on a box).</div></Card>;
@@ -576,7 +598,7 @@ function Answers({ ds, dec, model, evidence, targets, prior, post, label, realSe
           <Card key={t} wide={!!cmp} title={label(t)} sub={hasEv ? `Given: ${evText}` : "For all babies (nothing known yet)"}>
             <div style={{ "--c": colorOf(t, mode) } as React.CSSProperties}>
             <div className="bn-answer">
-              {v.states.map((s, k) => (
+              {orderOf(b, order).map((k) => [v.states[k], k] as const).map(([s, k]) => (
                 <div key={s} className={`bn-ans-row${k === top ? " top" : ""}`}>
                   <span>{s}</span>
                   <span className="bn-ans-track"><i className="before" style={{ width: `${a[k] * 100}%` }} /><i className="after" style={{ width: `${b[k] * 100}%` }} /></span>
@@ -613,7 +635,7 @@ function Answers({ ds, dec, model, evidence, targets, prior, post, label, realSe
                   <h4>Real and synthetic, same question</h4>
                   <table>
                     <thead><tr><th>{label(t)}</th><th>Real</th><th>Synthetic</th><th>Synthetic − real (points)</th></tr></thead>
-                    <tbody>{v.states.map((st, k) => (
+                    <tbody>{orderOf(R.b, order).map((k) => [v.states[k], k] as const).map(([st, k]) => (
                       <tr key={st} className={k === dq.maxState ? "max" : ""}>
                         <td>{st}</td>
                         <td><span className="bn-cmp-bar"><i className="r" style={{ width: `${R.b[k] * 100}%` }} /></span>{pct(R.b[k], 1)}</td>

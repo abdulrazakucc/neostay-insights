@@ -2,7 +2,7 @@
   "v": 1,
   "kdf": "PBKDF2-SHA256",
   "iterations": 600000,
-  "salt": "JLqJMViKuOR5FXD05X3+PQ==",
+  "salt": "UeKXY1knkxfkVaC7VTn77A==",
   "files": [
     "bn/center-1-synthetic.json",
     "bn/center-2-synthetic.json",
