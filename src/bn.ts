@@ -307,3 +307,30 @@ export function fitCheck(m: Model, ds: Dataset, d: Decoded) {
     return { node: n, tvd: tvd / 2, model, obs };
   });
 }
+
+/* How far apart two distributions over the same states are (real against synthetic answers):
+   - total variation distance: ½ Σ |p − q|, the share of babies that would have to change category (0–1);
+   - Jensen–Shannon distance: √(½ KL(p‖m) + ½ KL(q‖m)) with m = (p + q)/2 and base-2 logarithms (0–1);
+   - Hellinger distance: √(1 − Σ √(p·q)) (0–1);
+   - the state with the largest difference. All are 0 for identical distributions. */
+export function distances(p: ArrayLike<number>, q: ArrayLike<number>) {
+  let tvd = 0, bc = 0, js = 0, maxK = 0, maxD = -1;
+  for (let k = 0; k < p.length; k++) {
+    const a = p[k], b = q[k], m = (a + b) / 2;
+    tvd += Math.abs(a - b);
+    bc += Math.sqrt(a * b);
+    if (a > 0) js += 0.5 * a * Math.log2(a / m);
+    if (b > 0) js += 0.5 * b * Math.log2(b / m);
+    if (Math.abs(a - b) > maxD) { maxD = Math.abs(a - b); maxK = k; }
+  }
+  return { tvd: tvd / 2, jsd: Math.sqrt(Math.max(0, js)), hellinger: Math.sqrt(Math.max(0, 1 - bc)), maxState: maxK, maxDiff: maxD };
+}
+
+/* Why an arrow from a to b cannot be added to `edges` (null if it can). */
+export function edgeProblem(edges: Edge[], a: string, b: string): "self" | "exists" | "opposite" | "loop" | null {
+  if (a === b) return "self";
+  if (edges.some((e) => e[0] === a && e[1] === b)) return "exists";
+  if (edges.some((e) => e[0] === b && e[1] === a)) return "opposite";
+  if (makesCycle(edges, a, b)) return "loop";
+  return null;
+}

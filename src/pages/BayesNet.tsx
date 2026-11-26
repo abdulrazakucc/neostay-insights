@@ -6,7 +6,7 @@ import { Card, PageHead, Segmented } from "../ui";
 import { num, PALETTE, pct } from "../theme";
 import type { Props } from "../App";
 import { loadFile } from "../files";
-import { decode, fitCheck, influence, learn, makesCycle, observed, query, strengthWord, suggest,
+import { decode, distances, edgeProblem, fitCheck, influence, learn, makesCycle, observed, query, strengthWord, suggest,
   type Dataset, type Decoded, type Edge, type Evidence, type Model, type Suggestion } from "../bn";
 import { TermsBox } from "./Metrics";
 
@@ -40,7 +40,8 @@ export const VAR_COLORS: Record<"light" | "dark", Record<string, string>> = {
 };
 export const colorOf = (id: string, mode: "light" | "dark") => VAR_COLORS[mode][id] ?? PALETTE[mode].series[0];
 
-const STORE = (center: string, kind: string) => `insights-bn-${center}-${kind}`;
+const STORE = (center: string) => `insights-bn-${center}`;   // one drawing per center, shared by its real and synthetic data
+const KIND_NAME: Record<string, string> = { real: "Real", synthetic: "Synthetic" };
 const W = 305, H = 275;
 const defaultNet = (ds: Dataset): Net => ({
   nodes: ds.variables.map((v) => v.id), edges: ds.default_edges.map((e) => [e[0], e[1]] as Edge),
@@ -94,16 +95,31 @@ function DragLine({ fromX, fromY, toX, toY }: ConnectionLineComponentProps) {
     <circle cx={toX} cy={toY} r={5} fill="var(--accent)" /></g>);
 }
 
+/* Move an arrow by choosing where it starts and where it points. */
+function MoveArrow({ from, to, nodes, label, onMove }: { from: string; to: string; nodes: string[]; label: (s: string) => string; onMove: (a: string, b: string) => boolean }) {
+  const [a, setA] = useState(from), [b, setB] = useState(to);
+  const opts = nodes.map((n) => <option key={n} value={n}>{label(n)}</option>);
+  return (
+    <div className="bn-move">
+      <span>Move it: from</span>
+      <select value={a} onChange={(e) => setA(e.target.value)} aria-label="Arrow starts at">{opts}</select>
+      <span>to</span>
+      <select value={b} onChange={(e) => setB(e.target.value)} aria-label="Arrow points to">{opts}</select>
+      <button className="btn" disabled={a === from && b === to} onClick={() => onMove(a, b)}>Move</button>
+    </div>
+  );
+}
+
 /* ------------------------------------------------------------------ the page */
 function BayesInner({ mode, center }: Props & { center: any }) {
   const p = PALETTE[mode];
   const kinds = center?.has_real_data ? ["real", "synthetic"] : ["synthetic"];
   const [kind, setKind] = useState(kinds[0]);
-  const [ds, setDs] = useState<Dataset | null>(null);
+  const [sets, setSets] = useState<Record<string, Dataset>>({});
   const [err, setErr] = useState<string | null>(null);
   const [net, setNet] = useState<Net | null>(null);
   const [past, setPast] = useState<Net[]>([]);
-  const [model, setModel] = useState<Model | null>(null);
+  const [models, setModels] = useState<Record<string, Model>>({});
   const [modelSig, setModelSig] = useState("");
   const [tab, setTab] = useState<Tab>("design");
   const [msg, setMsg] = useState<{ text: string; cls: string } | null>(null);
@@ -119,31 +135,36 @@ function BayesInner({ mode, center }: Props & { center: any }) {
   const cid = center?.center ?? "center-6";
 
   useEffect(() => { if (!kinds.includes(kind)) setKind(kinds[0]); }, [cid]);
+  // Every dataset of the center (real and synthetic for Center 6): one drawing, learned on each.
   useEffect(() => {
     let live = true;
-    setDs(null); setErr(null); setModel(null); setEvidence({}); setSugs(null); setPast([]);
-    loadFile(`bn/${cid}-${kind}.json`).then((b) => b.text()).then((t) => {
+    setSets({}); setErr(null); setModels({}); setEvidence({}); setSugs(null); setPast([]);
+    Promise.all(kinds.map((k) => loadFile(`bn/${cid}-${k}.json`).then((b) => b.text()).then((t) => [k, JSON.parse(t) as Dataset] as const))).then((loaded) => {
       if (!live) return;
-      const d: Dataset = JSON.parse(t);
-      setDs(d);
+      const d = loaded[0][1];
+      setSets(Object.fromEntries(loaded));
       let n: Net | null = null;
-      try { const raw = localStorage.getItem(STORE(cid, kind)); if (raw) n = JSON.parse(raw); } catch { /* storage unavailable */ }
+      try { const raw = localStorage.getItem(STORE(cid)) ?? localStorage.getItem(`${STORE(cid)}-${kinds[0]}`); if (raw) n = JSON.parse(raw); } catch { /* storage unavailable */ }
       const ids = new Set(d.variables.map((v) => v.id));
-      if (!n || !n.nodes.every((x) => ids.has(x))) n = defaultNet(d);
+      if (!n || !n.nodes.every((x) => ids.has(x)) || !n.edges.every(([a, b]) => ids.has(a) && ids.has(b))) n = defaultNet(d);
       setNet(n);
     }).catch(() => live && setErr("The network data could not be loaded. Reload the page (on this computer: run `make insights-data`)."));
     return () => { live = false; };
-  }, [cid, kind]);
-  const dec: Decoded | null = useMemo(() => (ds ? decode(ds) : null), [ds]);
+  }, [cid]);
+  const ds: Dataset | null = sets[kind] ?? null;
+  const decs = useMemo(() => Object.fromEntries(Object.entries(sets).map(([k, d]) => [k, decode(d)])), [sets]) as Record<string, Decoded>;
+  const dec: Decoded | null = decs[kind] ?? null;
+  const model: Model | null = models[kind] ?? null;
+  const other = kinds.find((k) => k !== kind && sets[k]);
   const V = useMemo(() => Object.fromEntries((ds?.variables ?? []).map((v) => [v.id, v])), [ds]);
   const label = (id: string) => V[id]?.label ?? id;
 
   const commit = useCallback((n: Net, note?: { text: string; cls: string }) => {
     setNet((cur) => { if (cur) setPast((h) => [...h.slice(-40), cur]); return n; });
-    try { localStorage.setItem(STORE(cid, kind), JSON.stringify(n)); } catch { /* storage unavailable */ }
+    try { localStorage.setItem(STORE(cid), JSON.stringify(n)); } catch { /* storage unavailable */ }
     setSugs(null);
     if (note) setMsg(note);
-  }, [cid, kind]);
+  }, [cid]);
   const stale = !!model && !!net && sig(net) !== modelSig;
   // Boxes grow when they show chances: fit the whole network into the frame whenever that changes.
   useEffect(() => { if (net && ds) fitFrame(); }, [tab, modelSig, net?.nodes.length, ds, fitFrame]);
@@ -153,6 +174,10 @@ function BayesInner({ mode, center }: Props & { center: any }) {
   const prior = useMemo(() => (learned && ds ? Object.fromEntries(model!.nodes.map((n) => [n, query(model!, ds, n, {})])) : {}), [learned, model, ds]);
   const post = useMemo(() => (learned && ds ? Object.fromEntries(model!.nodes.map((n) => [n, query(model!, ds, n, evidence)])) : {}), [learned, model, ds, evidence]);
   const fit = useMemo(() => (learned && ds && dec ? fitCheck(model!, ds, dec) : []), [learned, model, ds, dec]);
+  // The other dataset's answers to the same question, on the same drawing (Center 6: real against synthetic).
+  const otherModel = other && learned ? models[other] : undefined;
+  const otherPrior = useMemo(() => (otherModel && other ? Object.fromEntries(otherModel.nodes.map((n) => [n, query(otherModel, sets[other], n, {})])) : {}), [otherModel, other, sets]);
+  const otherPost = useMemo(() => (otherModel && other ? Object.fromEntries(otherModel.nodes.map((n) => [n, query(otherModel, sets[other], n, evidence)])) : {}), [otherModel, other, sets, evidence]);
 
   const pick = useCallback((id: string, s: number) => {
     setEvidence((e) => { const n = { ...e }; if (n[id] === s) delete n[id]; else n[id] = s; return n; });
@@ -187,19 +212,37 @@ function BayesInner({ mode, center }: Props & { center: any }) {
     if (done.length) setNet((cur) => {
       if (!cur) return cur;
       const n = { ...cur, pos: { ...cur.pos, ...Object.fromEntries(done.map((c) => [c.id, c.position!])) } };
-      try { localStorage.setItem(STORE(cid, kind), JSON.stringify(n)); } catch { /* storage unavailable */ }
+      try { localStorage.setItem(STORE(cid), JSON.stringify(n)); } catch { /* storage unavailable */ }
       return n;
     });
-  }, [cid, kind]);
+  }, [cid]);
+  const problemText = (prob: string, a: string, b: string) => ({
+    self: { text: "An arrow needs two different variables.", cls: "bad" },
+    exists: { text: `${label(a)} → ${label(b)} is already in the network.`, cls: "warn" },
+    opposite: { text: `${label(b)} → ${label(a)} already links these two. Click that arrow and choose "Reverse" to turn it round.`, cls: "warn" },
+    loop: { text: `Not possible: ${label(a)} → ${label(b)} would make a loop (a variable would end up influencing itself). Remove or reverse another arrow first.`, cls: "bad" },
+  } as Record<string, { text: string; cls: string }>)[prob];
   const onConnect = useCallback((c: Connection) => {
     if (!net || !c.source || !c.target) return;
-    const a = c.source, b = c.target;
-    if (a === b) return setMsg({ text: "An arrow needs two different variables.", cls: "bad" });
-    if (net.edges.some((e) => e[0] === a && e[1] === b)) return setMsg({ text: `${label(a)} → ${label(b)} is already in the network.`, cls: "warn" });
-    if (net.edges.some((e) => e[0] === b && e[1] === a)) return setMsg({ text: `${label(b)} → ${label(a)} already links these two. Click that arrow and choose "Reverse" to turn it round.`, cls: "warn" });
-    if (makesCycle(net.edges, a, b)) return setMsg({ text: `Not added: ${label(a)} → ${label(b)} would make a loop (a variable would end up influencing itself). Remove or reverse another arrow first.`, cls: "bad" });
+    const a = c.source, b = c.target, prob = edgeProblem(net.edges, a, b);
+    if (prob) return setMsg(problemText(prob, a, b));
     commit({ ...net, edges: [...net.edges, [a, b]] }, { text: `Added ${label(a)} → ${label(b)}.`, cls: "good" });
   }, [net, commit, V]);
+  /* Move an arrow: keep it, but change where it starts and/or where it points. */
+  const moveEdge = useCallback((key: string, a: string, b: string) => {
+    if (!net) return false;
+    const [oa, ob] = key.split(">");
+    if (oa === a && ob === b) return false;
+    const rest = net.edges.filter((e) => !(e[0] === oa && e[1] === ob));
+    const prob = edgeProblem(rest, a, b);
+    if (prob) { setMsg(problemText(prob, a, b)); return false; }
+    commit({ ...net, edges: [...rest, [a, b]] }, { text: `Moved: ${label(oa)} → ${label(ob)} is now ${label(a)} → ${label(b)}.`, cls: "good" });
+    setSelEdge(`${a}>${b}`);
+    return true;
+  }, [net, commit, V]);
+  const onReconnect = useCallback((old: FlowEdge, c: Connection) => {
+    if (c.source && c.target) moveEdge(old.id, c.source, c.target);
+  }, [moveEdge]);
   const removeEdge = (key: string) => {
     if (!net) return;
     const [a, b] = key.split(">");
@@ -211,6 +254,7 @@ function BayesInner({ mode, center }: Props & { center: any }) {
     const [a, b] = key.split(">");
     const rest = net.edges.filter((e) => !(e[0] === a && e[1] === b));
     if (makesCycle(rest, b, a)) return setMsg({ text: `Cannot reverse: ${label(b)} → ${label(a)} would make a loop.`, cls: "bad" });
+    void makesCycle;
     commit({ ...net, edges: [...rest, [b, a]] }, { text: `Reversed: now ${label(b)} → ${label(a)}.`, cls: "good" });
     setSelEdge(`${b}>${a}`);
   };
@@ -229,7 +273,7 @@ function BayesInner({ mode, center }: Props & { center: any }) {
     if (!past.length) return;
     const prev = past[past.length - 1];
     setPast(past.slice(0, -1)); setNet(prev); setSugs(null); setSelEdge(null);
-    try { localStorage.setItem(STORE(cid, kind), JSON.stringify(prev)); } catch { /* storage unavailable */ }
+    try { localStorage.setItem(STORE(cid), JSON.stringify(prev)); } catch { /* storage unavailable */ }
     setMsg({ text: "Undone.", cls: "" });
   };
 
@@ -238,11 +282,11 @@ function BayesInner({ mode, center }: Props & { center: any }) {
     setBusy(true);
     window.setTimeout(() => {
       const t0 = performance.now();
-      const m = learn(ds, dec, net.nodes, net.edges, 1);
-      setModel(m); setModelSig(sig(net)); setBusy(false); setTab("learn");
+      const ms = Object.fromEntries(Object.keys(sets).map((k) => [k, learn(sets[k], decs[k], net.nodes, net.edges, 1)]));
+      setModels(ms); setModelSig(sig(net)); setBusy(false); setTab("learn");
       setTargets((t) => t.filter((x) => net.nodes.includes(x)));
       setEvidence((e) => Object.fromEntries(Object.entries(e).filter(([k]) => net.nodes.includes(k))));
-      setMsg({ text: `Probabilities learned from ${num(ds.n, 0)} baby-shifts in ${num(performance.now() - t0, 0)} ms.`, cls: "good" });
+      setMsg({ text: `Probabilities learned for the same drawing from ${Object.keys(sets).map((k) => `${num(sets[k].n, 0)} ${k} baby-shifts`).join(" and ")} in ${num(performance.now() - t0, 0)} ms.`, cls: "good" });
     }, 30);
   };
   const askData = () => {
@@ -276,9 +320,10 @@ function BayesInner({ mode, center }: Props & { center: any }) {
       <PageHead eyebrow={center?.name ?? "Center 6"} title="Bayesian network: reasoning with chances"
         lead="Draw how the babies' facts and care relate to each other, let the data fill in the probabilities, then ask 'what if' questions: tell the network what you know about a baby, and see how the chances of everything else change." />
       <div className="row" style={{ marginBottom: 12 }}>
-        {kinds.length > 1 && <Segmented value={kind} onChange={setKind} options={[{ key: "real", label: "Real boards (observed)" }, { key: "synthetic", label: "Synthetic unit (simulated)" }]} />}
+        {kinds.length > 1 && <><span className="bn-show">Show in the boxes:</span><Segmented value={kind} onChange={setKind} options={[{ key: "real", label: "Real boards (observed)" }, { key: "synthetic", label: "Synthetic unit (simulated)" }]} /></>}
         <span className={`badge ${realSet ? "good" : "warn"}`}>{realSet ? "Real Center 6 data" : center?.has_real_data ? "Synthetic Center 6" : `${center?.name}: synthetic scenario, assumed settings`}</span>
         <span className="badge">{num(ds.n, 0)} baby-shifts · {num(ds.stays, 0)} stays</span>
+        {other && <span className="badge info">Both datasets are learned on the same drawing; answers compare them</span>}
       </div>
       <div className="bn-steps">
         {([["design", "1", "Design the network", "Choose the variables and draw the arrows"], ["learn", "2", "Learn the probabilities", "The data fills in every chance"], ["reason", "3", "Ask questions", "Set what you know; see the chances change"]] as [Tab, string, string, string][]).map(([k, n, t, d]) => (
@@ -316,6 +361,7 @@ function BayesInner({ mode, center }: Props & { center: any }) {
           </div>
           <div className="bn-canvas">
             <ReactFlow nodes={rfNodes} edges={flowEdges} nodeTypes={nodeTypes} onNodesChange={onNodesChange} onConnect={tab === "design" ? onConnect : undefined}
+              onReconnect={tab === "design" ? onReconnect : undefined} edgesReconnectable={tab === "design"} reconnectRadius={18}
               nodesConnectable={tab === "design"} edgesFocusable elementsSelectable
               onEdgeClick={(_, e) => setSelEdge(e.id)} onPaneClick={() => setSelEdge(null)}
               onEdgesDelete={(es) => tab === "design" && es.forEach((e) => removeEdge(e.id))} deleteKeyCode={tab === "design" ? ["Backspace", "Delete"] : null}
@@ -327,8 +373,11 @@ function BayesInner({ mode, center }: Props & { center: any }) {
               <div className="bn-edge-pop">
                 <b>{label(se[0])} → {label(se[1])}</b>
                 {learned && model!.edgeStrength[selEdge!] != null && <span className={`badge ${strengthWord(model!.edgeStrength[selEdge!]).cls}`}>{strengthWord(model!.edgeStrength[selEdge!]).word}</span>}
-                {tab === "design" ? <div className="row"><button className="btn ghost" onClick={() => reverseEdge(selEdge!)}>⇅ Reverse</button><button className="btn ghost danger" onClick={() => removeEdge(selEdge!)}>✕ Remove</button></div>
-                  : <small>Go to step 1 to reverse or remove it.</small>}
+                {tab === "design" ? <>
+                  <div className="row"><button className="btn ghost" onClick={() => reverseEdge(selEdge!)}>⇅ Reverse</button><button className="btn ghost danger" onClick={() => removeEdge(selEdge!)}>✕ Remove</button></div>
+                  <MoveArrow key={selEdge} from={se[0]} to={se[1]} nodes={net.nodes} label={label} onMove={(a, b) => moveEdge(selEdge!, a, b)} />
+                  <small>Or drag either end of the arrow onto another box.</small>
+                </> : <small>Go to step 1 to move, reverse or remove it.</small>}
                 {learned && model!.edgeStrength[selEdge!] != null && <small>Without this arrow the network's fit (BIC) would {model!.edgeStrength[selEdge!] >= 0 ? `drop by ${num(2 * model!.edgeStrength[selEdge!], 0)}` : `improve by ${num(-2 * model!.edgeStrength[selEdge!], 0)}`}.</small>}
                 {!learned && tab === "design" && <small>Learn the probabilities to see how strongly the data support it.</small>}
               </div>
@@ -336,7 +385,8 @@ function BayesInner({ mode, center }: Props & { center: any }) {
           </div>
         </div>
 
-        {tab === "reason" && learned && <Answers ds={ds} dec={dec} model={model!} evidence={evidence} targets={targets.filter((t) => model!.nodes.includes(t))} prior={prior} post={post} label={label} realSet={realSet} mode={mode} />}
+        {tab === "reason" && learned && <Answers ds={ds} dec={dec} model={model!} evidence={evidence} targets={targets.filter((t) => model!.nodes.includes(t))} prior={prior} post={post} label={label} realSet={realSet} mode={mode}
+          cmp={otherModel && other ? { kind: other, ds: sets[other], dec: decs[other], prior: otherPrior, post: otherPost } : undefined} mainKind={kind} />}
         </div>
         <aside className="bn-side">
           {tab === "design" && <>
@@ -387,6 +437,12 @@ function BayesInner({ mode, center }: Props & { center: any }) {
               </ul>
               <small className="muted">Points = total variation distance × 100. A large gap means the arrows leave out a link the data need.</small>
             </Card>
+            {otherModel && other && <Card title={`${KIND_NAME[kind]} against ${KIND_NAME[other].toLowerCase()}: the same drawing`} sub="For each variable, how far apart the two networks' shares are for all babies (total variation distance, points out of 100)">
+              <ul className="bn-fit">{model!.nodes.map((n) => { const dd = distances(prior[n], otherPrior[n]); return (
+                <li key={n} className={dd.tvd > 0.1 ? "off" : dd.tvd >= 0.005 ? "near" : ""}><span>{label(n)}</span><b>{dd.tvd < 0.005 ? "same" : `${num(dd.tvd * 100, 1)} points apart`}</b></li>); })}
+              </ul>
+              <small className="muted">Same structure, learned separately on {num(sets[kind].n, 0)} {kind} and {num(sets[other].n, 0)} {other} baby-shifts.</small>
+            </Card>}
             <Card title="Probability tables" sub="Pick a variable to see its chances for every combination of its parents">
               <select value={cptNode} onChange={(e) => setCptNode(e.target.value)} aria-label="Variable">{model!.nodes.map((n) => <option key={n} value={n}>{label(n)}</option>)}</select>
             </Card>
@@ -428,7 +484,7 @@ function BayesInner({ mode, center }: Props & { center: any }) {
 
       {tab === "learn" && learned && <CptView ds={ds} model={model!} node={model!.nodes.includes(cptNode) ? cptNode : model!.nodes[0]} label={label} mode={mode} />}
 
-      <TermsBox ids={["bayes-net", "arrow", "cpt", "prior-posterior", "evidence", "bdeu", "bic", "bic-scale", "available-case", "inference", "baby-shift-unit"]} />
+      <TermsBox ids={["bayes-net", "arrow", "cpt", "prior-posterior", "evidence", "bdeu", "bic", "bic-scale", "available-case", "inference", "baby-shift-unit", "tvd", "jsd", "hellinger", "same-drawing"]} />
       <div className="note">Planning support, not for decisions about one baby. Every chance counts baby-shifts (one baby on one board), so babies with long stays weigh more; the network shows how things go together in the {realSet ? "unit's boards" : "simulated unit"}, not proof of cause.</div>
     </>
   );
@@ -469,8 +525,9 @@ function CptView({ ds, model, node, label, mode }: { ds: Dataset; model: Model; 
 }
 
 /* ------------------------------------------------------------------ the answers */
-function Answers({ ds, dec, model, evidence, targets, prior, post, label, realSet, mode }: { ds: Dataset; dec: Decoded; model: Model; evidence: Evidence; targets: string[];
-  prior: Record<string, Float64Array>; post: Record<string, Float64Array>; label: (s: string) => string; realSet: boolean; mode: "light" | "dark" }) {
+type Cmp = { kind: string; ds: Dataset; dec: Decoded; prior: Record<string, Float64Array>; post: Record<string, Float64Array> };
+function Answers({ ds, dec, model, evidence, targets, prior, post, label, realSet, mode, cmp, mainKind }: { ds: Dataset; dec: Decoded; model: Model; evidence: Evidence; targets: string[];
+  prior: Record<string, Float64Array>; post: Record<string, Float64Array>; label: (s: string) => string; realSet: boolean; mode: "light" | "dark"; cmp?: Cmp; mainKind: string }) {
   const hasEv = Object.keys(evidence).length > 0;
   if (!targets.length) return <Card wide title="Your answers"><div className="note">Choose at least one variable under <b>② What you want to know</b> (or click <b>Ask</b> on a box).</div></Card>;
   const evText = Object.entries(evidence).map(([k, s]) => `${label(k)} = ${ds.variables.find((v) => v.id === k)!.states[s]}`).join("; ");
@@ -485,7 +542,7 @@ function Answers({ ds, dec, model, evidence, targets, prior, post, label, realSe
         const obs = observed(dec, ds, t, evidence);
         const inf = hasEv ? influence(model, ds, t, evidence, big.k) : [];
         return (
-          <Card key={t} title={label(t)} sub={hasEv ? `Given: ${evText}` : "For all babies (nothing known yet)"}>
+          <Card key={t} wide={!!cmp} title={label(t)} sub={hasEv ? `Given: ${evText}` : "For all babies (nothing known yet)"}>
             <div style={{ "--c": colorOf(t, mode) } as React.CSSProperties}>
             <div className="bn-answer">
               {v.states.map((s, k) => (
@@ -513,6 +570,37 @@ function Answers({ ds, dec, model, evidence, targets, prior, post, label, realSe
                 : <><b>No baby-shift in the data matches all of this.</b> The answer is the network's reasoning from the arrows and the parts it has seen, not from babies exactly like this one.</>)
                 : <><b>Check against the data:</b> share seen in the data for {v.states[top]}: {pct(obs.dist[top], 1)}.</>}
             </div>
+            {cmp && cmp.post[t] && (() => {
+              // Real first, synthetic second, whichever is shown in the boxes.
+              const sides = [{ kind: mainKind, b, a, ds, dec }, { kind: cmp.kind, b: cmp.post[t], a: cmp.prior[t], ds: cmp.ds, dec: cmp.dec }]
+                .sort((x, y) => (x.kind === "real" ? -1 : y.kind === "real" ? 1 : 0));
+              const [R, S] = sides;
+              const dq = distances(R.b, S.b), d0 = distances(R.a, S.a);
+              const oR = observed(R.dec, R.ds, t, evidence), oS = observed(S.dec, S.ds, t, evidence);
+              return (
+                <div className="bn-cmp" style={{ "--c": colorOf(t, mode) } as React.CSSProperties}>
+                  <h4>Real and synthetic, same question</h4>
+                  <table>
+                    <thead><tr><th>{label(t)}</th><th>Real</th><th>Synthetic</th><th>Synthetic − real (points)</th></tr></thead>
+                    <tbody>{v.states.map((st, k) => (
+                      <tr key={st} className={k === dq.maxState ? "max" : ""}>
+                        <td>{st}</td>
+                        <td><span className="bn-cmp-bar"><i className="r" style={{ width: `${R.b[k] * 100}%` }} /></span>{pct(R.b[k], 1)}</td>
+                        <td><span className="bn-cmp-bar"><i className="s" style={{ width: `${S.b[k] * 100}%` }} /></span>{pct(S.b[k], 1)}</td>
+                        <td className="sc-val">{(S.b[k] - R.b[k]) >= 0 ? "+" : "−"}{(Math.abs(S.b[k] - R.b[k]) * 100).toFixed(1)}</td>
+                      </tr>))}
+                    </tbody>
+                  </table>
+                  <div className="bn-cmp-metrics">
+                    <div><span>Total variation distance</span><b>{dq.tvd.toFixed(3)}</b><small>{num(dq.tvd * 100, 1)} in 100 baby-shifts would need another value to make them match</small></div>
+                    <div><span>Jensen–Shannon distance</span><b>{dq.jsd.toFixed(3)}</b><small>0 = identical, 1 = no overlap</small></div>
+                    <div><span>Hellinger distance</span><b>{dq.hellinger.toFixed(3)}</b><small>0 = identical, 1 = no overlap</small></div>
+                  </div>
+                  <p className="bn-say">{dq.tvd < 0.005 ? <>The two networks give practically the same answer.</> : <>The largest gap is <b>{v.states[dq.maxState]}</b>: {pct(R.b[dq.maxState], 1)} real against {pct(S.b[dq.maxState], 1)} synthetic.</>}
+                    {hasEv && <> For all babies (nothing known) the two are {num(d0.tvd * 100, 1)} points apart{dq.tvd > d0.tvd + 0.005 ? ", so this question pulls them further apart" : dq.tvd + 0.005 < d0.tvd ? ", so this question brings them closer" : ", about the same"}.</>}</p>
+                  {hasEv && <small className="muted">Baby-shifts matching what you know: real {num(oR.match, 0)}, synthetic {num(oS.match, 0)}.{oR.match < 30 || oS.match < 30 ? " Few in one dataset: read the comparison with care." : ""}</small>}
+                </div>);
+            })()}
           </Card>
         );
       })}

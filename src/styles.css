@@ -451,3 +451,26 @@ button.btn { border: 0; cursor: pointer; font: inherit; }
 .bn-zoom { position: static; box-shadow: none; border: 0; border-bottom: 1px solid var(--line); border-radius: 0; background: var(--chip); padding: 6px 12px; max-width: none; }
 .bn-zoom span { max-width: none; }
 .bn-legend i.after { background: var(--c, var(--accent)); }
+
+/* Bayesian network v3: move arrows, real against synthetic answers */
+.bn-show { font-size: 12.5px; color: var(--muted); }
+.bn-move { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; justify-content: center; font-size: 12.5px; color: var(--soft); }
+.bn-move select { font-size: 12.5px; padding: 4px 6px; max-width: 170px; }
+.react-flow__edgeupdater { cursor: move; }
+.bn-cmp { margin-top: 12px; border-top: 1px dashed var(--line); padding-top: 10px; }
+.bn-cmp h4 { margin: 0 0 6px; font-size: 13px; }
+.bn-cmp table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.bn-cmp th { text-align: left; font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.4px; color: var(--muted); padding: 4px 6px; border-bottom: 1px solid var(--line); }
+.bn-cmp td { padding: 4px 6px; border-bottom: 1px solid var(--line); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.bn-cmp tr.max td { background: color-mix(in srgb, var(--c) 10%, transparent); font-weight: 600; }
+.bn-cmp-bar { display: inline-block; width: 60px; height: 8px; border-radius: 99px; background: var(--chip); margin-right: 6px; vertical-align: 0; position: relative; overflow: hidden; }
+.bn-cmp-bar i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 99px; }
+.bn-cmp-bar i.r { background: var(--c); }
+.bn-cmp-bar i.s { background: repeating-linear-gradient(45deg, var(--c) 0 3px, color-mix(in srgb, var(--c) 45%, transparent) 3px 6px); }
+.bn-cmp-metrics { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin: 8px 0 4px; }
+.bn-cmp-metrics div { background: var(--chip); border-radius: 10px; padding: 6px 8px; }
+.bn-cmp-metrics span { display: block; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; color: var(--muted); }
+.bn-cmp-metrics b { font-size: 16px; font-variant-numeric: tabular-nums; }
+.bn-cmp-metrics small { display: block; font-size: 10.5px; color: var(--muted); line-height: 1.3; }
+.card.wide .bn-answer, .card.wide .bn-legend, .card.wide .bn-say, .card.wide .bn-inf, .card.wide .bn-obs { max-width: 760px; }
+.bn-cmp-bar { width: 120px; }
