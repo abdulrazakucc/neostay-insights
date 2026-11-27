@@ -576,3 +576,4 @@ ol.bn-how { padding-left: 20px; }
 .practice td small { display: block; color: var(--muted); font-size: 10.5px; }
 .practice td.few { opacity: 0.55; }
 .sc-details.wide { grid-column: 1 / -1; }
+.skills td small { display: block; color: var(--muted); font-size: 11px; }

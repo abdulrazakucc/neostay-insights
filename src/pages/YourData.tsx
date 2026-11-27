@@ -165,9 +165,41 @@ export function Nurses({ data, mode }: Props) {
 const MEASURE_KEYS = [["dol", "Day of life"], ["ga_weeks", "GA at birth"], ["cga_weeks", "Corrected age"], ["weight_g", "Weight"]];
 const TIER = ["continuing care", "continuing care", "intermediate care", "intensive care", "intensive care"];
 
-function RatioBabies({ at, mode }: { at: any; mode: Props["mode"] }) {
+/* Every skill of the unit's acuity tool: whether the boards show it, how it is read, and the ratios of the baby-shifts
+   showing it (acuity_insights/build.py: skills_coverage). */
+const SEEN: Record<string, { word: string; cls: string }> = { yes: { word: "on the boards", cls: "good" }, partly: { word: "partly", cls: "warn" }, no: { word: "not recorded", cls: "bad" } };
+const TIER_NAME: Record<string, string> = { intensive: "Intensive (1:2 or 1:1)", intermediate: "Intermediate (1:2-3)", continuing: "Continuing (1:3 or 1:3-4)" };
+function SkillsCard({ sk }: { sk: any; mode: Props["mode"] }) {
+  const [show, setShow] = useState("all");
+  const rows = (sk.rows as any[]).filter((r) => show === "all" || r.seen === show);
+  return (
+    <Card wide id="sec-skills" title="Nurse skills: which conditions the boards show"
+      sub={`Every skill in the unit's acuity tool (the nurse skills list), whether the boards record it, and the ratios the babies who showed it were at. Source: ${sk.source}.`}
+      n={`${sk.counts.yes} on the boards · ${sk.counts.partly} partly · ${sk.counts.no} not recorded`}>
+      <div className="row" style={{ marginBottom: 8 }}>
+        <Segmented value={show} onChange={setShow} options={[{ key: "all", label: `All ${sk.rows.length}` }, { key: "yes", label: `On the boards (${sk.counts.yes})` },
+          { key: "partly", label: `Partly (${sk.counts.partly})` }, { key: "no", label: `Not recorded (${sk.counts.no})` }]} />
+      </div>
+      <div className="table-scroll">
+        <table className="sc-table skills">
+          <thead><tr><th>Skill (the tool's words)</th><th>Tool level</th><th>On the boards?</th><th>How it is read</th><th>Baby-shifts</th>{sk.ratios.map((x: string) => <th key={x}>at {x}</th>)}</tr></thead>
+          <tbody>{rows.map((r) => (
+            <tr key={r.code}><td><b>{r.skill}</b><small>{r.system}</small></td><td><small>{TIER_NAME[r.tier] ?? r.tier}</small></td>
+              <td><span className={`badge ${SEEN[r.seen].cls}`}>{SEEN[r.seen].word}</span></td><td><small>{r.how}</small></td>
+              <td className="sc-val">{r.shifts != null ? r.shifts.toLocaleString() : "–"}</td>
+              {sk.ratios.map((_: string, k: number) => <td key={k} className="sc-val">{r.by_ratio && r.shifts ? pct(r.by_ratio[k] / r.shifts, 0) : "–"}</td>)}</tr>))}
+          </tbody>
+        </table>
+      </div>
+      <p className="note">{sk.counts.no} of the tool's {sk.rows.length} skills cannot be seen on the boards (medications, seizures, cooling, phototherapy, the state of a sepsis, anomalies, bedside surgery, resuscitation), and {sk.counts.partly} only partly. Babies needing them are on the boards, but these conditions are not written there. The ratio written on the board may reflect them; the past-practice table and the models can see them only through that ratio. Recording them (for example from the medication record) would let the tool's levels be checked in full.</p>
+    </Card>
+  );
+}
+
+function RatioBabies({ at, mode, skills }: { at: any; mode: Props["mode"]; skills?: any }) {
   const p = PALETTE[mode];
   const [m, setM] = useState("dol");
+  const [dir, setDir] = useState("col");   // "col": share of each ratio with the condition; "row": the ratios of babies with the condition
   const meas = at.measures[m];
   const isAge = m === "ga_weeks" || m === "cga_weeks";
   const fmt = (v: number | null | undefined) => (v == null ? "–" : isAge ? wd(v) : m === "weight_g" ? `${num(v, 0)} g` : `${num(v, 0)} d`);
@@ -197,14 +229,17 @@ function RatioBabies({ at, mode }: { at: any; mode: Props["mode"] }) {
   };
   // Condition profile: one heading row per body system, then its conditions; cells are the share of baby-shifts.
   const ylab: string[] = [], cells: any[] = [], heads = new Set<number>();
+  const rowShare = (r: any) => { const t = r.shifts.reduce((a: number, b: number) => a + b, 0); return r.shifts.map((x: number) => (t ? x / t : null)); };
   at.groups.forEach((g: any) => {
-    heads.add(ylab.length); ylab.push(g.name);
-    g.rows.forEach((r: any) => { const yi = ylab.length; ylab.push(r.name); r.share.forEach((v: number | null, k: number) => cells.push([k, yi, v, r.shifts[k]])); });
+    heads.add(ylab.length); ylab.push(dir === "col" ? `${g.name}${g.exclusive ? "" : " · can overlap"}` : g.name);
+    g.rows.forEach((r: any) => { const yi = ylab.length; ylab.push(r.name); (dir === "col" ? r.share : rowShare(r)).forEach((v: number | null, k: number) => cells.push([k, yi, v, r.shifts[k]])); });
   });
   const heat = {
     ...base(mode),
-    tooltip: { ...base(mode).tooltip, trigger: "item", formatter: (x: any) => `<b>${ylab[x.value[1]]}</b> at ${at.ratios[x.value[0]]}<br>${pct(x.value[2], 1)} of ${at.shifts[x.value[0]].toLocaleString()} baby-shifts (${x.value[3].toLocaleString()})` },
-    grid: { left: 210, right: 16, top: 34, bottom: 8 },
+    tooltip: { ...base(mode).tooltip, trigger: "item", formatter: (x: any) => dir === "col"
+      ? `<b>${ylab[x.value[1]]}</b> at ${at.ratios[x.value[0]]}<br>${pct(x.value[2], 1)} of the ${at.shifts[x.value[0]].toLocaleString()} baby-shifts at ${at.ratios[x.value[0]]} (${x.value[3].toLocaleString()})`
+      : `<b>${ylab[x.value[1]]}</b><br>${pct(x.value[2], 1)} of these baby-shifts were at ${at.ratios[x.value[0]]} (${x.value[3].toLocaleString()})` },
+    grid: { left: 260, right: 16, top: 34, bottom: 8 },
     xAxis: { type: "category", position: "top", data: at.ratios.map((_: string, i: number) => label(i)), ...axis(mode), axisLine: { show: false }, splitArea: { show: false },
       axisLabel: { color: p.ink, fontSize: 12, fontWeight: 600 } },
     yAxis: { type: "category", data: ylab, inverse: true, ...axis(mode), axisLine: { show: false }, splitLine: { show: false },
@@ -231,10 +266,17 @@ function RatioBabies({ at, mode }: { at: any; mode: Props["mode"] }) {
           rows={rows.map((q, i) => [at.ratios[i], TIER[i], at.stays[i], q.n.toLocaleString(), fmt(q.median), `${fmt(q.q1)} – ${fmt(q.q3)}`, `${fmt(q.p10)} – ${fmt(q.p90)}`])} />
       </Card>
       <Card wide n={`${cnt(sumShifts, "baby-shifts")} from ${at.stays.map((s: number, i: number) => `${at.ratios[i]} ${s}`).join(" · ")} babies`}
-        title="Their condition at each ratio" sub="Share of baby-shifts at each ratio with each condition. Conditions are the acuity tool's body systems that the boards record; comment keywords (such as sepsis) are left out because a mention is not a diagnosis. Last block: the body system the acuity tool, applied to the board, points to.">
+        title="Their condition at each ratio" sub="The acuity tool's body systems as the boards record them; comment keywords (such as sepsis) are left out because a mention is not a diagnosis. Last block: the body system the acuity tool, applied to the board, points to.">
+        <div className="row" style={{ marginBottom: 8 }}>
+          <Segmented value={dir} onChange={setDir} options={[{ key: "col", label: "Within each ratio (columns)" }, { key: "row", label: "For each condition (rows)" }]} />
+        </div>
+        <p className="note" style={{ marginTop: 0 }}>{dir === "col"
+          ? <>Each <b>column</b> is one ratio: the share of its baby-shifts with each condition. Within a block, a column adds to 100%, except the blocks marked <i>can overlap</i> (a baby can have a central line and IV fluids at once). Rows do not add up: each cell is a share of a different group.</>
+          : <>Each <b>row</b> is one condition: of the baby-shifts with it, the share at each ratio. Every row adds to 100%. Example: of the baby-shifts on a ventilator, how many were at 1:2 and how many at 1:1.</>}</p>
         <Chart option={heat} height={ylab.length * 25 + 50} label="Condition profile by nurse ratio" />
-        <TableView head={["Condition", ...at.ratios]} rows={at.groups.flatMap((g: any) => g.rows.map((r: any) => [`${g.name}: ${r.name}`, ...r.share.map((v: number | null) => pct(v, 1))]))} />
+        <TableView head={["Condition", ...at.ratios, "Baby-shifts"]} rows={at.groups.flatMap((g: any) => g.rows.map((r: any) => [`${g.name}: ${r.name}`, ...(dir === "col" ? r.share : rowShare(r)).map((v: number | null) => pct(v, 1)), r.shifts.reduce((a: number, b: number) => a + b, 0).toLocaleString()]))} />
       </Card>
+      {skills && <SkillsCard sk={skills} mode={mode} />}
     </>
   );
 }
@@ -292,7 +334,7 @@ export function BabiesNurses(props: Props) {
           <Chart option={stack} height={Math.max(200, table.rows.length * 34 + 40)} label="Nurse ratio by group" />
           <TableView head={["Group", "Babies", ...RATIOS]} rows={table.rows.map((r: string, j: number) => [rowName(r), table.stays[j], ...RATIOS.map((_, i) => pct(table.series[i][j], 0))])} />
         </Card>
-        {bn.at_ratio && <RatioBabies at={bn.at_ratio} mode={mode} />}
+        {bn.at_ratio && <RatioBabies at={bn.at_ratio} mode={mode} skills={bn.skills} />}
         <Card n={cnt(wb.reduce((a, b) => a + w[b].n, 0), "completed stays")} id="sec-per-baby" title="Nursing each baby needs" sub="Nurse-shifts over a completed stay (each baby-shift counts its ratio's share of a nurse, more-nurse end): median and middle half">
           <Chart option={work} height={260} label="Nurse-shifts per stay by GA band" />
           <TableView head={["Born", "Stays", "Median", "Middle half", "90th", "Share of all nursing"]} rows={wb.map((b) => [b, w[b].n, num(w[b].median, 1), `${num(w[b].q1, 1)}–${num(w[b].q3, 1)}`, num(w[b].p90, 1), pct(w[b].share, 0)])} />
