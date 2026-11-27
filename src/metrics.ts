@@ -129,6 +129,14 @@ export const METRICS: Metric[] = [
     lay: "Each model could use the core inputs (the ones used first) or every field both the real and synthetic boards carry. In every month of the test it tried both on the 30 days before the cut-off and kept the one that predicted better, so extra inputs are used only where they help.",
     technical: "Feature set as a tuned hyperparameter: {core (23 daily / 15 at admission), all (65 / 54)} × the model's grid, chosen by validation IBS (survival) or log loss (ratio) on the inner validation window; the chosen set is refitted on all training origins.",
     ideal: "—", where: "How good are the predictions? (technical details)" },
+  { id: "input-role", name: "How an input is used: weighed, starting point, predicted", also: "predictor, predicate, outcome", group: "Looking inside a model",
+    lay: "Weighed: the model weighs the item with the others (a term of an equation, or a yes/no question in the trees). Starting point: the item picks the row of a table the prediction starts from, such as what usually followed babies on the same breathing support. Predicted: what the model predicts; never one of its own inputs.",
+    technical: "Predictor: a covariate of the logistic hazard or a split variable of the gradient-boosted trees. Predicate: a conditioning variable selecting the row of a smoothed transition or practice table, T_d(a, ·) or R(a, s, ·). Outcome: the target. A tree's predictors also act through split predicates x_j ≤ θ.",
+    ideal: "—", where: "What the models look at" },
+  { id: "perm-importance", name: "How much an input matters (permutation importance)", group: "Looking inside a model",
+    lay: "Shuffle one item among babies the model did not learn from and see how much worse the predictions get. The bigger the drop, the more the model relies on it. Shares add up to 100% for each prediction.",
+    technical: "5-fold cross-fitting grouped by baby on the boards before the last cut-off; for each held-out fold, the rise in the integrated Brier score (stay) or multi-class Brier score (condition) when the feature is permuted within the fold, averaged over 2 permutations and the folds; negative rises set to 0; normalised to sum to 1. Effect: mean change in the predicted probability when the feature is set to its 10th vs 90th percentile (0 vs 1 for yes/no) for every held-out baby.",
+    ideal: "—", where: "What the models look at" },
 
   // ---------------------------------------------------------------- synthetic fidelity
   { id: "ks", name: "Kolmogorov–Smirnov distance", also: "KS", group: "Synthetic data: how close to real",

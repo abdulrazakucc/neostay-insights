@@ -6,6 +6,7 @@ import { Babies, Nurses, BabiesNurses } from "./pages/YourData";
 import Predictive from "./pages/Predictive";
 import Counts from "./pages/Counts";
 import Scorecard from "./pages/Scorecard";
+import ModelsLookAt from "./pages/ModelsLookAt";
 import Guide from "./pages/Guide";
 import Metrics from "./pages/Metrics";
 import BayesNet from "./pages/BayesNet";
@@ -47,6 +48,7 @@ function pagesFor(center: any): Page[] {
       { key: "c-generation", label: "Generation and reports", group: g2, icon: "⚙", el: (pp: any) => <Generation {...pp} generatorsPage={<Synthetic {...pp} />} /> },
       { key: "bayes", label: "Bayesian network", group: "Reasoning", icon: "⌬", el: BayesNet },
       { key: "scorecard", label: "How good are the predictions?", group: "Models", icon: "★", el: Scorecard },
+      { key: "inputs", label: "What the models look at", group: "Models", icon: "☰", el: ModelsLookAt },
       { key: "metrics", label: "Metrics explained", group: "Models", icon: "ℹ", el: Metrics },
       { key: "predictive", label: "Predictive modeling & evaluation", group: "Models", icon: "◆", el: Predictive,
         subs: [["overview", "Forecasting overview"], ["experiments", "Learning from synthetic data"], ["calibration", "Calibration"], ["explain", "What drives the stay"],
@@ -68,6 +70,7 @@ function pagesFor(center: any): Page[] {
     { key: "c-compare-off", label: "Real vs synthetic", group: g, icon: "⇄", disabled: "No real data available for this center: real-versus-synthetic comparison exists for Center 6 only." },
     { key: "bayes", label: "Bayesian network", group: "Reasoning (this center's synthetic data)", icon: "⌬", el: BayesNet },
     { key: "scorecard", label: "How good are the predictions?", group: "Models (evaluated on Center 6)", icon: "★", el: Scorecard },
+      { key: "inputs", label: "What the models look at", group: "Models (evaluated on Center 6)", icon: "☰", el: ModelsLookAt },
     { key: "metrics", label: "Metrics explained", group: "Models (evaluated on Center 6)", icon: "ℹ", el: Metrics },
     { key: "predictive", label: "Predictive modeling & evaluation", group: "Models (evaluated on Center 6)", icon: "◆", el: Predictive,
         subs: [["overview", "Forecasting overview"], ["experiments", "Learning from synthetic data"], ["calibration", "Calibration"], ["explain", "What drives the stay"],

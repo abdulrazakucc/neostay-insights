@@ -333,7 +333,7 @@ function ConditionDetail({ cond }: { cond: any }) {
   );
 }
 
-export default function Scorecard({ data, mode }: Props) {
+export default function Scorecard({ data, mode, go }: Props) {
   const sc = data.scorecard;
   if (!sc?.items?.length) return <div className="empty">No prediction scores yet: run `make insights-data` in acuity-models.</div>;
   const items: Item[] = sc.items;
@@ -342,6 +342,9 @@ export default function Scorecard({ data, mode }: Props) {
       <PageHead eyebrow="Predictive models" title="How good are the predictions?"
         lead="Everything starts from the baby: how long the stay will be, and how the baby's condition will change. The nurse ratio follows from the condition through the unit's past practice. Each gets one score from 0 (no better than the unit's averages) to 1 (always right), measured on real Center 6 babies the models had never seen." />
       {sc.simple && <SimpleView sm={sc.simple} mode={mode} />}
+      {data.feature_use && (
+        <p className="muted" style={{ margin: "14px 2px" }}>What each prediction reads from the board, how it uses each item and how much each one matters:{" "}
+          <a href="#inputs" onClick={(e) => { e.preventDefault(); go("inputs"); }}>What the models look at →</a></p>)}
       <details className="sc-details analyst">
         <summary>Technical details for analysts: every score, the models compared, pass marks, training settings and inputs</summary>
         <div className="grid" style={{ marginTop: 12 }}>
