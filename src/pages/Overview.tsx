@@ -54,9 +54,9 @@ export default function Overview({ data, mode, go }: Props) {
               ["babies/stays", "Babies", "Baby stays, birth and length of stay, care during the stay, feeding and growth."],
               ["nurses", "Nurses", "Bedside nurses the ratios call for, shift by shift, and the mix of ratios."],
               ["babies-nurses", "Babies & nurses", "What sets each baby's nurse ratio, and which babies take most of the nursing."],
-              ["models", "Predictive models", "Every model compared, the chosen ones, calibration and what drives them."],
-              ["synthetic", "Synthetic generators", "How the two generators work, step by step."],
-              ["compare", "Real vs synthetic", "Fidelity, usefulness for models and privacy, side by side."],
+              ["scorecard", "How good are the predictions?", "How long a baby will stay and how the condition will change, with one score from 0 to 1 each."],
+              ["c-generation", "Synthetic generators", "How the two generators work, step by step."],
+              ["c-compare", "Real vs synthetic", "Fidelity, usefulness for models and privacy, side by side."],
             ].map(([key, t, d]) => (
               <button key={key} className="navtile" onClick={() => go(key)}><b>{t} →</b><span>{d}</span></button>
             ))}

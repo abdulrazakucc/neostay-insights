@@ -3,7 +3,6 @@ import { Mode } from "./theme";
 import { loadData } from "./vault";
 import Overview from "./pages/Overview";
 import { Babies, Nurses, BabiesNurses } from "./pages/YourData";
-import Models from "./pages/Models";
 import Predictive from "./pages/Predictive";
 import Counts from "./pages/Counts";
 import Scorecard from "./pages/Scorecard";
@@ -50,9 +49,8 @@ function pagesFor(center: any): Page[] {
       { key: "scorecard", label: "How good are the predictions?", group: "Models", icon: "★", el: Scorecard },
       { key: "metrics", label: "Metrics explained", group: "Models", icon: "ℹ", el: Metrics },
       { key: "predictive", label: "Predictive modeling & evaluation", group: "Models", icon: "◆", el: Predictive,
-        subs: [["overview", "Forecasting overview"], ["experiments", "Training and experiments"], ["architectures", "Model architectures"], ["comparison", "Model comparison"],
-          ["journey", "Patient journey evaluation"], ["calibration", "Calibration and reliability"], ["explain", "Explainability"], ["errors", "Error analysis"], ["registry", "Model registry"]] },
-      { key: "models", label: "Journey study (earlier)", group: "Models", icon: "◇", el: Models },
+        subs: [["overview", "Forecasting overview"], ["experiments", "Learning from synthetic data"], ["calibration", "Calibration"], ["explain", "What drives the stay"],
+          ["errors", "Where the stay model errs"], ["registry", "Model registry"]] },
     ];
   }
   const g = `${name} · synthetic scenario`;
@@ -72,8 +70,8 @@ function pagesFor(center: any): Page[] {
     { key: "scorecard", label: "How good are the predictions?", group: "Models (evaluated on Center 6)", icon: "★", el: Scorecard },
     { key: "metrics", label: "Metrics explained", group: "Models (evaluated on Center 6)", icon: "ℹ", el: Metrics },
     { key: "predictive", label: "Predictive modeling & evaluation", group: "Models (evaluated on Center 6)", icon: "◆", el: Predictive,
-        subs: [["overview", "Forecasting overview"], ["experiments", "Training and experiments"], ["architectures", "Model architectures"], ["comparison", "Model comparison"],
-          ["journey", "Patient journey evaluation"], ["calibration", "Calibration and reliability"], ["explain", "Explainability"], ["errors", "Error analysis"], ["registry", "Model registry"]] },
+        subs: [["overview", "Forecasting overview"], ["experiments", "Learning from synthetic data"], ["calibration", "Calibration"], ["explain", "What drives the stay"],
+          ["errors", "Where the stay model errs"], ["registry", "Model registry"]] },
   ];
 }
 

@@ -216,47 +216,14 @@ export function WhyNotBigger({ data }: { data: any }) {
   const D = data.scorecard?.deep, F = data.predictive?.results?.tft;
   if (!D) return null;
   const f3 = (x: number | undefined) => (x == null ? "—" : x.toFixed(3));
-  const best = (o: Record<string, number>, keys: string[]) => keys.filter((x) => o[x] != null).reduce((a, b) => (o[b] < o[a] ? b : a));
-  const NM: Record<string, string> = { km: "average stay", logit: "logistic model", gbm: "boosted model", tcn: "TCN", tft: "TFT", lookup: "table", persistence: "same as today", anchored: "forecast from today's babies", train_mean: "training average" };
-  const fx = F?.babies?.experiments, ux = F?.unit?.experiments;
+  const fx = F?.babies?.experiments;
   return (
-    <Card wide title="The Temporal Fusion Transformer: tested, and where it stands" sub="Why the best models here are not the biggest ones, with the numbers">
+    <Card wide title="Why not a bigger model, such as the Temporal Fusion Transformer?" sub="Tested; the numbers">
       <div className="sc-why">
-        <p><b>What it is.</b> The Temporal Fusion Transformer (TFT) is a deep-learning forecaster built for many inputs: it weighs every input, remembers the recent past, looks back at the days that matter and forecasts every day ahead. We built two: one reads each baby's last 28 shifts with <b>every</b> input on the board ({num(D.tft_parameters, 0)} numbers to learn); the other reads the unit's last 28 boards ({num(D.unit_tft_parameters, 0)} numbers). Both were put through the same monthly test as every other model.</p>
-        <p><b>Monthly test, learning only from the real boards before each cut-off.</b> Remaining stay: overall error {f3(D.daily_ibs.tft)} for the TFT, against {f3(D.daily_ibs[best(D.daily_ibs, ["logit", "gbm", "tcn"])])} for the {NM[best(D.daily_ibs, ["logit", "gbm", "tcn"])]} and {f3(D.daily_ibs.km)} for the average stay (lower is better).
-          Nurse ratio (penalty for confident mistakes, 1 / 3 / 7 days): TFT {["1", "3", "7"].map((h) => f3(D.ratio_log_loss[h].tft)).join(" / ")}, best other model {["1", "3", "7"].map((h) => f3(D.ratio_log_loss[h][best(D.ratio_log_loss[h], ["lookup", "gbm", "tcn"])])).join(" / ")}.
-          Babies on the unit (typical miss, 1 / 3 / 7 / 14 days): TFT {["1", "3", "7", "14"].map((h) => num(D.census_mae[h].tft, 1)).join(" / ")}, same as today {["1", "3", "7", "14"].map((h) => num(D.census_mae[h].persistence, 1)).join(" / ")}.</p>
-        {fx && ux && <p><b>Learning from synthetic data as well (75-day test).</b> A model this size needs far more examples than one unit has, so we also trained it on Center 6's synthetic babies (from generators fitted before the test days). Remaining stay, overall error: synthetic only {f3(fx.A.survival.ibs)}, real only {f3(fx.B.survival.ibs)}, both {f3(fx.C.survival.ibs)}; the logistic model, real only, {f3(data.predictive?.results?.survival?.modes?.daily?.experiments?.B?.logit?.ibs)}.
-          Babies on the unit, typical miss at 1 / 7 days: synthetic only {num(ux.A.by_h["1"].mae, 1)} / {num(ux.A.by_h["7"].mae, 1)}, both {num(ux.C.by_h["1"].mae, 1)} / {num(ux.C.by_h["7"].mae, 1)}, against {num(F.unit.persistence["1"].mae, 1)} / {num(F.unit.persistence["7"].mae, 1)} for same as today.</p>}
-        <p><b>Why it does not win here.</b> One unit gives {k ? `${num(k.boards, 0)} boards over ${days} days and ${num(k.stays, 0)} stays` : "a few hundred boards"}. Each month the unit model learns from only {D.unit_train_days[0]}–{D.unit_train_days[D.unit_train_days.length - 1]} days. A model with {num(D.tft_parameters, 0)} numbers to learn can memorise that past and still miss new weeks; boosted trees and simple tables need far less data. And tomorrow's unit looks very much like today's, so "same as today" is hard to beat.</p>
-        <p><b>What we use instead.</b> For each question, the model that scored best in the monthly test and met the pass marks (see each card). Every model could use every input; inside each month it kept the extra inputs only where they predicted better on the days before the cut-off.</p>
-        <p><b>When the TFT should be tried again.</b> With several years of boards, real data from more centers, or planned events the boards do not yet hold (booked admissions, planned discharges). It stays in the monthly test, so it will be used as soon as it beats the simpler models.</p>
-      </div>
-    </Card>
-  );
-}
-
-/* The plan for the predictions marked not ready (docs/PREDICTIVE_IMPROVEMENT_PLAN.md). */
-export function ImprovementPlan({ items }: { items: Item[] }) {
-  const nr = items.filter((i) => i.status === "not_ready");
-  const daily = items.find((i) => i.key === "leave_daily");
-  const c14 = items.find((i) => i.key === "census_d14");
-  const census = nr.filter((i) => i.key.startsWith("census"));
-  return (
-    <Card wide id="sc-plan" title="What was improved, and what comes next" sub="Pass marks stay as they are; each step is judged by the same monthly test.">
-      <div className="sc-why">
-        <p><b>Done.</b> The remaining stay was too sure of itself (calibration slope 0.60). The stay model now averages the logistic and boosted models and
-          corrects its chances against every earlier month: {daily?.status === "silent" ? "it now meets every pass mark" : "it still misses a pass mark"}. The ratio model mixes the table, boosted trees and the TCN, and
-          the unit model keeps only the part of the forecast change that proved right in earlier months.</p>
-        {census.length > 0 && <>
-          <p><b>Next: babies and nurses ahead ({census.map((i) => i.title.replace("Babies and nurses needed in ", "")).join(", ")}).</b> The unit model is about as good as
-            "same as today"{c14 ? ` (at 14 days ${show(c14.metrics[0].value, c14.metrics[0].fmt)} against ${show(c14.metrics[0].base, c14.metrics[0].fmt)} off)` : ""}, not better by more than chance. Tomorrow's unit is mostly today's babies; the unknowns are admissions and the timing of discharges.</p>
-          <ol className="sc-set">
-            <li><b>Better discharge timing</b>: the recalibrated stay model and the board's discharge signals (discharge education noted, off tube feeds, room air) (medium effort).</li>
-            <li><b>Information the boards do not hold</b>: booked and expected admissions (maternal transfers, scheduled deliveries) and planned discharges from the hospital's systems; the largest expected gain (needs data access).</li>
-            <li><b>More weeks of data</b>: each month adds about 30 test days.</li>
-          </ol></>}
-        <p className="muted">Details: docs/PREDICTIVE_IMPROVEMENT_PLAN.md in acuity-models.</p>
+        <p><b>What it is.</b> A deep-learning forecaster built for many inputs: it weighs every input, remembers the recent past and forecasts every day ahead. We built one that reads each baby's last 28 shifts with every input on the board ({num(D.tft_parameters, 0)} numbers to learn) and put it through the same monthly test.</p>
+        <p><b>Result.</b> Remaining stay, overall error (lower is better): {f3(D.daily_ibs.tft)} for the TFT against {f3(D.daily_ibs.ens ?? D.daily_ibs.gbm)} for the stay model and {f3(D.daily_ibs.km)} for the average stay.
+          {fx && <> Trained on synthetic babies as well (75-day test) it improved ({f3(fx.B.survival.ibs)} real only, {f3(fx.C.survival.ibs)} with synthetic), but stayed behind the logistic model ({f3(data.predictive?.results?.survival?.modes?.daily?.experiments?.B?.logit?.ibs)}).</>}</p>
+        <p><b>Why.</b> One unit gives {k ? `${num(k.boards, 0)} boards over ${days} days and ${num(k.stays, 0)} stays` : "a few hundred boards"}: too little for a model this size, which can memorise the past and still miss new weeks. Boosted trees and simple tables need far less data. It stays in the test and would be used if it ever won.</p>
       </div>
     </Card>
   );
@@ -378,18 +345,11 @@ export default function Scorecard({ data, mode }: Props) {
       <details className="sc-details analyst">
         <summary>Technical details for analysts: every score, the models compared, pass marks, training settings and inputs</summary>
         <div className="grid" style={{ marginTop: 12 }}>
-          <Terms wide title="Scores used in these details" ids={["c-index", "typical-miss", "ibs", "skill", "coverage", "slope", "in-the-large", "accuracy", "log-loss", "brier", "honest-chances", "mae", "within-one", "bias", "baseline", "paired", "pass-mark", "feature-set", "tft", "tcn"]} />
+          <Terms wide title="Scores used in these details" ids={["c-index", "typical-miss", "ibs", "skill", "coverage", "slope", "in-the-large", "ppv", "sensitivity", "accuracy", "log-loss", "brier", "baseline", "paired", "pass-mark", "feature-set", "tft"]} />
           {items.filter((it) => it.key.startsWith("leave_")).map((it) => <ItemCard key={it.key} it={it} mode={mode} inputs={data.model_inputs} />)}
           {sc.condition && <ConditionDetail cond={sc.condition} />}
           <ModelInputs inputs={data.model_inputs} />
-          <details className="sc-details wide">
-            <summary>Earlier forecasts, not the focus now: nurse ratio models, babies and nurses needed, the Temporal Fusion Transformer</summary>
-            <div className="grid" style={{ marginTop: 12 }}>
-              {items.filter((it) => it.key.startsWith("ratio_") || it.key.startsWith("census_")).map((it) => <ItemCard key={it.key} it={it} mode={mode} inputs={data.model_inputs} />)}
-              <ImprovementPlan items={items} />
-              <WhyNotBigger data={data} />
-            </div>
-          </details>
+          <WhyNotBigger data={data} />
         </div>
       </details>
     </>
